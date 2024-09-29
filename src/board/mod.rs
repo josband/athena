@@ -1,3 +1,6 @@
+//! Structures and functions relating to the chess board
+
+/// A rank (row) on a chess board.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub enum Rank {
     First,
@@ -11,11 +14,50 @@ pub enum Rank {
 }
 
 impl Rank {
-    pub fn get_index(&self) -> u8 {
+    /// Converts an integer value to the corresponding rank
+    /// 
+    /// # Panics
+    /// `from_index` panics when the passed in index is greater than 7.
+    pub fn from_index(index: u8) -> Self {
+        match index {
+            0 => Rank::First,
+            1 => Rank::Second,
+            2 => Rank::Third,
+            3 => Rank::Fourth,
+            4 => Rank::Fifth,
+            5 => Rank::Sixth,
+            6 => Rank::Seventh,
+            7 => Rank::Eighth,
+            _ => panic!("Unknown rank index: {index}")
+        }
+    }
+
+    /// Converts the rank to it's corresponding index.
+    /// 
+    /// Indexes for ranks range from 0 to 7 with the first rank corresponding to 0 
+    /// and 7 corresponding to the Eighth rank. 
+    pub fn to_index(&self) -> u8 {
         *self as u8
+    }
+
+    /// Gets the rank above the current rank, if one exists.
+    /// 
+    /// `get_up` returns the rank above the current rank. If the
+    /// given rank is the eighth rank, `None` is returned.
+    pub fn get_up(&self) -> Option<Rank> {
+        todo!()
+    }
+
+    /// Gets the rank below the current rank, if one exists.
+    /// 
+    /// `get_down` returns the rank above the current rank. If the 
+    /// given rank is the eighth rank, `None` is returned. 
+    pub fn get_down(&self) -> Option<Rank> {
+        todo!()
     }
 }
 
+/// A file (column) on a chess board.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub enum File {
     A,
@@ -29,8 +71,44 @@ pub enum File {
 }
 
 impl File {
-    pub fn get_index(&self) -> u8 {
+    /// Converts an index to its corresponding File.
+    /// 
+    /// # Panics
+    /// `from_index` panics when the index is outside the range
+    /// 0 to 7.
+    pub fn from_index(index: u8) -> Self {
+        match index {
+            0 => File::A,
+            1 => File::B,
+            2 => File::C,
+            3 => File::D,
+            4 => File::E,
+            5 => File::F,
+            6 => File::G,
+            7 => File::H,
+            _ => panic!("Unknown file index: {index}")
+        }
+    }
+
+    /// Converts a File to its corresponding index.
+    pub fn to_index(&self) -> u8 {
         *self as u8
+    }
+
+    /// Returns the File to the right of the current File.
+    /// 
+    /// `get_right` returns the File to the right of the current File. If
+    /// there is no File to the right, `None` is returned.
+    pub fn get_right(&self) -> Option<File> {
+        todo!()
+    }
+
+    /// Returns the File to the left of the current File.
+    /// 
+    /// `get_left` returns the File to the left of the current File. If
+    /// there is no File to the left. `None` is returned.
+    pub fn get_left(&self) -> Option<File> {
+        todo!()
     }
 }
 
@@ -62,8 +140,24 @@ impl Square {
         Square(square)
     }
 
+    /// Creates a Square from a specified Rank and File.
     pub fn from_rank_and_file(rank: Rank, file: File) -> Self {
-        todo!()
+        Square::new((rank.to_index() << 3 as u8) + file.to_index())
+    }    
+
+    /// Returns the Rank of a Square.
+    pub fn get_rank(&self) -> Rank {
+        Rank::from_index(self.0 >> 3)
+    }
+
+    /// Returns the File of a Square.
+    pub fn get_file(&self) -> File {
+        File::from_index(self.0 & 7)
+    }
+    
+    /// Returns the Rank and File of a Square.
+    pub fn get_rank_and_file(&self) -> (Rank, File) {
+        (self.get_rank(), self.get_file())
     }
 
     pub const A1: Square = Square(0);
@@ -138,15 +232,29 @@ mod tests {
 
     #[test]
     fn test_rank_index() {
-        assert_eq!(Rank::First.get_index(), 0);
-        assert_eq!(Rank::Fifth.get_index(), 4);
-        assert_eq!(Rank::Eighth.get_index(), 7);
+        assert_eq!(Rank::First.to_index(), 0);
+        assert_eq!(Rank::Fifth.to_index(), 4);
+        assert_eq!(Rank::Eighth.to_index(), 7);
     }
 
     #[test]
     fn test_file_index() {
-        assert_eq!(File::A.get_index(), 0);
-        assert_eq!(File::E.get_index(), 4);
-        assert_eq!(File::H.get_index(), 7);
+        assert_eq!(File::A.to_index(), 0);
+        assert_eq!(File::E.to_index(), 4);
+        assert_eq!(File::H.to_index(), 7);
+    }
+
+    #[test]
+    fn test_rank_from_index() {
+        assert_eq!(Rank::from_index(0), Rank::First);
+        assert_eq!(Rank::from_index(4), Rank::Fifth);
+        assert_eq!(Rank::from_index(7), Rank::Eighth);
+    }
+    
+    #[test]
+    fn test_file_from_index() {
+        assert_eq!(File::from_index(0), File::A);
+        assert_eq!(File::from_index(4), File::E);
+        assert_eq!(File::from_index(7), File::H);
     }
 }
