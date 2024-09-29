@@ -112,7 +112,9 @@ impl File {
     }
 }
 
-/// A square on the chess board. The inner value of this struct is an index corresponding
+/// A square on the chess board.
+/// 
+/// The inner value of this struct is an index corresponding
 /// to the specific square. 0 represents A1, followed by 1 representing B1 all the way to
 /// 63 representing H8.
 /// 
