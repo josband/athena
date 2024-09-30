@@ -44,16 +44,24 @@ impl Rank {
     /// 
     /// `get_up` returns the rank above the current rank. If the
     /// given rank is the eighth rank, `None` is returned.
-    pub fn get_up(&self) -> Option<Rank> {
-        todo!()
+    pub fn get_up(&self) -> Option<Self> {
+        let new_index = self.to_index() + 1; 
+        match new_index {
+            1..=7 => Some(Self::from_index(new_index)),
+            _ => None
+        }
     }
 
     /// Gets the rank below the current rank, if one exists.
     /// 
     /// `get_down` returns the rank above the current rank. If the 
     /// given rank is the eighth rank, `None` is returned. 
-    pub fn get_down(&self) -> Option<Rank> {
-        todo!()
+    pub fn get_down(&self) -> Option<Self> {
+         let new_index = self.to_index() - 1; 
+        match new_index {
+            1..=7 => Some(Self::from_index(new_index)),
+            _ => None
+        }
     }
 }
 
@@ -100,7 +108,11 @@ impl File {
     /// `get_right` returns the File to the right of the current File. If
     /// there is no File to the right, `None` is returned.
     pub fn get_right(&self) -> Option<File> {
-        todo!()
+        let new_index = self.to_index() + 1;
+        match new_index {
+            1..=7 => Some(File::from_index(new_index)),
+            _ => None
+        }
     }
 
     /// Returns the File to the left of the current File.
@@ -108,7 +120,11 @@ impl File {
     /// `get_left` returns the File to the left of the current File. If
     /// there is no File to the left. `None` is returned.
     pub fn get_left(&self) -> Option<File> {
-        todo!()
+        let new_index = self.to_index() + 1;
+        match new_index {
+            1..=7 => Some(File::from_index(new_index)),
+            _ => None
+        }
     }
 }
 
