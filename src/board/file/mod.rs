@@ -40,11 +40,10 @@ impl File {
     /// 
     /// `right` returns the File to the right of the current File. If
     /// there is no File to the right, `None` is returned.
-    pub fn right(&self) -> Option<File> {
-        let new_index = self.to_index() + 1;
-        match new_index {
-            1..=7 => Some(File::from_index(new_index)),
-            _ => None
+    pub fn right(&self) -> Option<Self> {
+        match self {
+            Self::H => None,
+            _ => Some(Self::from_index(self.to_index() + 1))
         }
     }
 
@@ -52,11 +51,10 @@ impl File {
     /// 
     /// `left` returns the File to the left of the current File. If
     /// there is no File to the left. `None` is returned.
-    pub fn left(&self) -> Option<File> {
-        let new_index = self.to_index() + 1;
-        match new_index {
-            1..=7 => Some(File::from_index(new_index)),
-            _ => None
+    pub fn left(&self) -> Option<Self> {
+        match self {
+            Self::A => None,
+            _ => Some(Self::from_index(self.to_index() - 1))
         }
     }
 }
@@ -77,5 +75,25 @@ mod tests {
         assert_eq!(File::from_index(0), File::A);
         assert_eq!(File::from_index(4), File::E);
         assert_eq!(File::from_index(7), File::H);
+    }
+
+    #[test]
+    fn test_left_some() {
+        assert_eq!(File::H.left(), Some(File::G));
+    }
+
+    #[test]
+    fn test_left_none() {
+        assert!(File::A.left().is_none());
+    }
+
+    #[test]
+    fn test_right_some() {
+        assert_eq!(File::A.right(), Some(File::B));
+    }
+
+    #[test]
+    fn test_right_none() {
+        assert!(File::H.right().is_none());
     }
 }

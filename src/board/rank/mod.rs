@@ -43,10 +43,9 @@ impl Rank {
     /// `up` returns the rank above the current rank. If the
     /// given rank is the eighth rank, `None` is returned.
     pub fn up(&self) -> Option<Self> {
-        let new_index = self.to_index() + 1; 
-        match new_index {
-            1..=7 => Some(Self::from_index(new_index)),
-            _ => None
+        match self {
+            Self::Eighth => None,
+            _ => Some(Self::from_index(self.to_index() + 1))
         }
     }
 
@@ -55,10 +54,9 @@ impl Rank {
     /// `down` returns the rank above the current rank. If the 
     /// given rank is the eighth rank, `None` is returned. 
     pub fn down(&self) -> Option<Self> {
-         let new_index = self.to_index() - 1; 
-        match new_index {
-            1..=7 => Some(Self::from_index(new_index)),
-            _ => None
+        match self {
+            Self::First => None,
+            _ => Some(Self::from_index(self.to_index() - 1))
         }
     }
 }
@@ -79,5 +77,25 @@ mod tests {
         assert_eq!(Rank::from_index(0), Rank::First);
         assert_eq!(Rank::from_index(4), Rank::Fifth);
         assert_eq!(Rank::from_index(7), Rank::Eighth);
+    }
+
+    #[test]
+    fn test_up_some() {
+        assert_eq!(Rank::First.up(), Some(Rank::Second));
+    }
+
+    #[test]
+    fn test_up_none() {
+        assert!(Rank::Eighth.up().is_none());
+    }
+
+    #[test]
+    fn test_down_some() {
+        assert_eq!(Rank::Eighth.down(), Some(Rank::Seventh));
+    }
+
+    #[test]
+    fn test_down_none() {
+        assert!(Rank::First.down().is_none());
     }
 }
