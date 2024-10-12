@@ -8,12 +8,12 @@ pub enum File {
     E,
     F,
     G,
-    H
+    H,
 }
 
 impl File {
     /// Converts an index to its corresponding File.
-    /// 
+    ///
     /// # Panics
     /// `from_index` panics when the index is outside the range
     /// 0 to 7.
@@ -27,7 +27,7 @@ impl File {
             5 => File::F,
             6 => File::G,
             7 => File::H,
-            _ => panic!("Unknown file index: {index}")
+            _ => panic!("Unknown file index: {index}"),
         }
     }
 
@@ -37,24 +37,24 @@ impl File {
     }
 
     /// Returns the File to the right of the current File.
-    /// 
+    ///
     /// `right` returns the File to the right of the current File. If
     /// there is no File to the right, `None` is returned.
     pub fn right(&self) -> Option<Self> {
         match self {
             Self::H => None,
-            _ => Some(Self::from_index(self.to_index() + 1))
+            _ => Some(Self::from_index(self.to_index() + 1)),
         }
     }
 
     /// Returns the File to the left of the current File.
-    /// 
+    ///
     /// `left` returns the File to the left of the current File. If
     /// there is no File to the left. `None` is returned.
     pub fn left(&self) -> Option<Self> {
         match self {
             Self::A => None,
-            _ => Some(Self::from_index(self.to_index() - 1))
+            _ => Some(Self::from_index(self.to_index() - 1)),
         }
     }
 }
@@ -62,7 +62,7 @@ impl File {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_to_index() {
         assert_eq!(File::A.to_index(), 0);

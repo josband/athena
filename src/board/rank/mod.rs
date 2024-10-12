@@ -8,12 +8,12 @@ pub enum Rank {
     Fifth,
     Sixth,
     Seventh,
-    Eighth
+    Eighth,
 }
 
 impl Rank {
     /// Converts an integer value to the corresponding rank
-    /// 
+    ///
     /// # Panics
     /// `from_index` panics when the passed in index is greater than 7.
     pub fn from_index(index: u8) -> Self {
@@ -26,37 +26,37 @@ impl Rank {
             5 => Rank::Sixth,
             6 => Rank::Seventh,
             7 => Rank::Eighth,
-            _ => panic!("Unknown rank index: {index}")
+            _ => panic!("Unknown rank index: {index}"),
         }
     }
 
     /// Converts the rank to it's corresponding index.
-    /// 
-    /// Indexes for ranks range from 0 to 7 with the first rank corresponding to 0 
-    /// and 7 corresponding to the Eighth rank. 
+    ///
+    /// Indexes for ranks range from 0 to 7 with the first rank corresponding to 0
+    /// and 7 corresponding to the Eighth rank.
     pub fn to_index(&self) -> u8 {
         *self as u8
     }
 
     /// Gets the rank above the current rank, if one exists.
-    /// 
+    ///
     /// `up` returns the rank above the current rank. If the
     /// given rank is the eighth rank, `None` is returned.
     pub fn up(&self) -> Option<Self> {
         match self {
             Self::Eighth => None,
-            _ => Some(Self::from_index(self.to_index() + 1))
+            _ => Some(Self::from_index(self.to_index() + 1)),
         }
     }
 
     /// Gets the rank below the current rank, if one exists.
-    /// 
-    /// `down` returns the rank above the current rank. If the 
-    /// given rank is the eighth rank, `None` is returned. 
+    ///
+    /// `down` returns the rank above the current rank. If the
+    /// given rank is the eighth rank, `None` is returned.
     pub fn down(&self) -> Option<Self> {
         match self {
             Self::First => None,
-            _ => Some(Self::from_index(self.to_index() - 1))
+            _ => Some(Self::from_index(self.to_index() - 1)),
         }
     }
 }

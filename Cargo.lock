@@ -3,5 +3,5 @@
 version = 3
 
 [[package]]
-name = "tango"
+name = "athena"
 version = "0.1.0"

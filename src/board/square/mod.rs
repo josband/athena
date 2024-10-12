@@ -1,28 +1,28 @@
-use crate::board::{Rank, File};
+use crate::board::{File, Rank};
 
 /// A square on the chess board.
-/// 
+///
 /// The inner value of this struct is an index corresponding
 /// to the specific square. 0 represents A1, followed by 1 representing B1 all the way to
 /// 63 representing H8.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```
-/// use tango::board::Square;
+/// use athena::board::Square;
 /// let chess_square = Square::new(3);
-/// 
+///
 /// assert_eq!(chess_square, Square::D1);
 /// ```
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
 pub struct Square(u8);
 
 impl Square {
-    /// Creates a new `Square` struct. 
-    /// 
+    /// Creates a new `Square` struct.
+    ///
     /// # Panics
-    /// 
-    /// This code panics if the user inputs a value representing a square outside the 64 
+    ///
+    /// This code panics if the user inputs a value representing a square outside the 64
     /// chess squares. In other words, `square` can only be within the bounds \[0, 63\].
     pub fn new(square: u8) -> Self {
         assert!(square <= 63);
@@ -38,7 +38,7 @@ impl Square {
     /// Creates a Square from a specified Rank and File.
     pub fn from_intersection(rank: Rank, file: File) -> Self {
         Self::new((rank.to_index() << 3 as u8) + file.to_index())
-    }    
+    }
 
     /// Returns the Rank of a Square.
     pub fn get_rank(&self) -> Rank {
@@ -49,7 +49,7 @@ impl Square {
     pub fn get_file(&self) -> File {
         File::from_index(self.0 & 7)
     }
-    
+
     /// Returns the Rank and File of a Square.
     pub fn get_rank_and_file(&self) -> (Rank, File) {
         (self.get_rank(), self.get_file())
@@ -60,7 +60,10 @@ impl Square {
         if self.get_rank() == Rank::Eighth {
             None
         } else {
-            Some(Self::from_intersection(self.get_rank().up().unwrap(), self.get_file()))
+            Some(Self::from_intersection(
+                self.get_rank().up().unwrap(),
+                self.get_file(),
+            ))
         }
     }
 
@@ -69,7 +72,10 @@ impl Square {
         if self.get_rank() == Rank::First {
             None
         } else {
-            Some(Self::from_intersection(self.get_rank().down().unwrap(), self.get_file()))
+            Some(Self::from_intersection(
+                self.get_rank().down().unwrap(),
+                self.get_file(),
+            ))
         }
     }
 
@@ -78,14 +84,18 @@ impl Square {
         if self.get_file() == File::H {
             None
         } else {
-            Some(Self::from_intersection(self.get_rank(), {
-                let this = &self.get_file();
-                let new_index = this.to_index() + 1;
-                match new_index {
-                    1..=7 => Some(File::from_index(new_index)),
-                    _ => None
+            Some(Self::from_intersection(
+                self.get_rank(),
+                {
+                    let this = &self.get_file();
+                    let new_index = this.to_index() + 1;
+                    match new_index {
+                        1..=7 => Some(File::from_index(new_index)),
+                        _ => None,
+                    }
                 }
-            }.unwrap()))
+                .unwrap(),
+            ))
         }
     }
 
@@ -94,7 +104,10 @@ impl Square {
         if self.get_file() == File::A {
             None
         } else {
-            Some(Self::from_intersection(self.get_rank(), self.get_file().left().unwrap()))
+            Some(Self::from_intersection(
+                self.get_rank(),
+                self.get_file().left().unwrap(),
+            ))
         }
     }
 
