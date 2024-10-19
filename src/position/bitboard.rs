@@ -1,16 +1,7 @@
-//! Structures and functions relating to the chess board
-
-mod file;
-mod rank;
-mod square;
-
-use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not};
-
-use crate::{Color, NUM_COLORS, NUM_PIECES};
-
-pub use self::file::File;
-pub use self::rank::Rank;
-pub use self::square::Square;
+use std::ops::{
+    BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Shl, ShlAssign, Shr,
+    ShrAssign,
+};
 
 /// A integrer representation of a chess board.
 ///
@@ -30,7 +21,7 @@ impl BitAnd for BitBoard {
 
 impl BitAndAssign for BitBoard {
     fn bitand_assign(&mut self, rhs: Self) {
-        self.0 = self.0 & rhs.0;
+        self.0 &= rhs.0;
     }
 }
 
@@ -44,7 +35,7 @@ impl BitOr for BitBoard {
 
 impl BitOrAssign for BitBoard {
     fn bitor_assign(&mut self, rhs: Self) {
-        self.0 = self.0 | rhs.0;
+        self.0 |= rhs.0;
     }
 }
 
@@ -58,7 +49,7 @@ impl BitXor for BitBoard {
 
 impl BitXorAssign for BitBoard {
     fn bitxor_assign(&mut self, rhs: Self) {
-        self.0 = self.0 ^ rhs.0;
+        self.0 ^= rhs.0;
     }
 }
 
@@ -70,8 +61,30 @@ impl Not for BitBoard {
     }
 }
 
-pub struct Board {
-    pieces_positions: [BitBoard; NUM_PIECES],
-    color_positions: [BitBoard; NUM_COLORS],
-    color_to_move: Color,
+impl Shr for BitBoard {
+    type Output = Self;
+
+    fn shr(self, rhs: Self) -> Self::Output {
+        Self(self.0 >> rhs.0)
+    }
+}
+
+impl ShrAssign for BitBoard {
+    fn shr_assign(&mut self, rhs: Self) {
+        self.0 >>= rhs.0;
+    }
+}
+
+impl Shl for BitBoard {
+    type Output = Self;
+
+    fn shl(self, rhs: Self) -> Self::Output {
+        Self(self.0 << rhs.0)
+    }
+}
+
+impl ShlAssign for BitBoard {
+    fn shl_assign(&mut self, rhs: Self) {
+        self.0 <<= rhs.0;
+    }
 }

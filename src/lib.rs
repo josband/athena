@@ -4,7 +4,7 @@
 use std::ops::Not;
 use std::{io::Error, str::FromStr};
 
-pub mod board;
+pub mod position;
 
 /// Represents the color of a piece.
 ///
