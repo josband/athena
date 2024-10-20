@@ -3,12 +3,12 @@ use std::ops::{
     ShrAssign,
 };
 
-/// A integrer representation of a chess board.
+/// A integer representation of a chess board.
 ///
 /// Bitboards are an array of boolean flags stored as an integer. The
 /// presence of a flag indicates the presence of a piece. Read more about
 /// bitboards [here](https://www.chessprogramming.org/Bitboards).
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct BitBoard(u64);
 
 impl BitAnd for BitBoard {

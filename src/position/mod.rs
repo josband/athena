@@ -18,7 +18,7 @@ mod square;
 use crate::{Color, NUM_COLORS, NUM_PIECES};
 
 pub struct Position {
-    pieces_positions: [BitBoard; NUM_PIECES],
-    color_positions: [BitBoard; NUM_COLORS],
+    white_pieces: [BitBoard; NUM_PIECES],
+    black_pieces: [BitBoard; NUM_PIECES],
     side_to_move: Color,
 }
