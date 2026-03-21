@@ -1,5 +1,5 @@
 use std::{
-    fmt::Debug,
+    fmt::{Debug, Display, Write},
     ops::{
         BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Index, IndexMut, Not, Shl,
         ShlAssign, Shr, ShrAssign,
@@ -26,7 +26,28 @@ impl Bitboard {
 
 impl Debug for Bitboard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{:#018X}", self.0))
+        f.write_fmt(format_args!("Bitboard({:#x})", self.0))
+    }
+}
+
+impl Display for Bitboard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for byte_index in (0..8).rev() {
+            for i in 0..8 {
+                let mask = 1 << ((byte_index * 8) + i);
+                if self.0 & mask != 0 {
+                    f.write_char('X')?;
+                } else {
+                    f.write_char('.')?;
+                }
+            }
+
+            if byte_index != 0 {
+                f.write_char('\n')?;
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -127,6 +148,15 @@ impl ShrAssign<u64> for Bitboard {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_display() {
+        let board = Bitboard(0xF10000000000001A);
+        assert_eq!(
+            format!("{}", board),
+            "X...XXXX\n........\n........\n........\n........\n........\n........\n.X.XX..."
+        );
+    }
 
     #[test]
     fn test_and() {
