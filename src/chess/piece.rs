@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{ops::Not, str::FromStr};
 
 use crate::chess::Error;
 
@@ -9,6 +9,23 @@ pub const NUM_PIECES: usize = 6;
 pub enum Color {
     White,
     Black,
+}
+
+impl Color {
+    pub fn is_white(&self) -> bool {
+        self == &Self::White
+    }
+}
+
+impl Not for Color {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Self::White => Self::Black,
+            Self::Black => Self::White,
+        }
+    }
 }
 
 impl FromStr for Color {
@@ -31,6 +48,22 @@ pub enum PieceType {
     Rook,
     Queen,
     King,
+}
+
+impl TryFrom<usize> for PieceType {
+    type Error = Error;
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Pawn),
+            1 => Ok(Self::Knight),
+            2 => Ok(Self::Bishop),
+            3 => Ok(Self::Rook),
+            4 => Ok(Self::Queen),
+            5 => Ok(Self::King),
+            _ => Err(Error::InvalidIndex),
+        }
+    }
 }
 
 impl FromStr for PieceType {
@@ -60,6 +93,10 @@ pub struct Piece {
 }
 
 impl Piece {
+    pub fn new(color: Color, piece_type: PieceType) -> Self {
+        Self { color, piece_type }
+    }
+
     pub fn color(&self) -> Color {
         self.color
     }

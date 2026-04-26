@@ -41,7 +41,7 @@ impl FromStr for File {
 }
 
 impl File {
-    pub fn increment(&self, count: u8) -> Option<Self> {
+    pub fn right_n(&self, count: u8) -> Option<Self> {
         let index = (*self as u8) + count;
         if index >= 8 {
             None
@@ -50,7 +50,7 @@ impl File {
         }
     }
 
-    pub fn decrement(&self, count: u8) -> Option<Self> {
+    pub fn left_n(&self, count: u8) -> Option<Self> {
         let index = (*self as i8) - count as i8;
         if index < 0 {
             None
@@ -87,7 +87,7 @@ pub enum Rank {
 }
 
 impl Rank {
-    pub fn increment(&self, count: u8) -> Option<Self> {
+    pub fn up_n(&self, count: u8) -> Option<Self> {
         let index = (*self as u8) + count;
         if index >= 8 {
             None
@@ -96,7 +96,7 @@ impl Rank {
         }
     }
 
-    pub fn decrement(&self, count: u8) -> Option<Self> {
+    pub fn down_n(&self, count: u8) -> Option<Self> {
         let index = (*self as i8) - count as i8;
         if index < 0 {
             None
@@ -142,6 +142,31 @@ impl FromStr for Rank {
     }
 }
 
+pub struct SquaresIter {
+    rank: Option<Rank>,
+    file: Option<File>,
+}
+
+impl Iterator for SquaresIter {
+    type Item = Square;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match (self.rank, self.file) {
+            (Some(r), Some(f)) => {
+                let s = Square::new(f, r);
+                self.file = f.right_n(1);
+                if self.file.is_none() {
+                    self.rank = r.up_n(1);
+                    self.file = Some(File::A);
+                }
+
+                Some(s)
+            }
+            _ => None,
+        }
+    }
+}
+
 #[rustfmt::skip]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Square {
@@ -163,7 +188,7 @@ impl Square {
     }
 
     pub fn rank(&self) -> Rank {
-        let index = (*self as u8) >> 3;
+        let index = self.lsf_index() >> 3;
         match index {
             0 => Rank::One,
             1 => Rank::Two,
@@ -178,7 +203,7 @@ impl Square {
     }
 
     pub fn file(&self) -> File {
-        let index = (*self as u8) & 0b111;
+        let index = self.lsf_index() & 0b111;
         match index {
             0 => File::A,
             1 => File::B,
@@ -189,6 +214,27 @@ impl Square {
             6 => File::G,
             7 => File::H,
             _ => unreachable!(),
+        }
+    }
+
+    /// Returns the index of the square using Least Significant File indexing.
+    pub fn lsf_index(&self) -> usize {
+        *self as usize
+    }
+
+    pub fn from_lsf_index(index: u8) -> Result<Self, Error> {
+        if index > 63 {
+            Err(Error::InvalidIndex)
+        } else {
+            let s = unsafe { std::mem::transmute::<u8, Square>(index) };
+            Ok(s)
+        }
+    }
+
+    pub fn values() -> SquaresIter {
+        SquaresIter {
+            rank: Some(Rank::One),
+            file: Some(File::A),
         }
     }
 }
@@ -246,20 +292,20 @@ mod tests {
     #[test]
     fn test_rank_increment() {
         let rank = Rank::Four;
-        let next_rank = rank.increment(2);
+        let next_rank = rank.up_n(2);
         assert_eq!(next_rank, Some(Rank::Six));
 
-        let next_rank = rank.increment(5);
+        let next_rank = rank.up_n(5);
         assert_eq!(next_rank, None);
     }
 
     #[test]
     fn test_rank_decrement() {
         let rank = Rank::Four;
-        let next_rank = rank.decrement(2);
+        let next_rank = rank.down_n(2);
         assert_eq!(next_rank, Some(Rank::Two));
 
-        let next_rank = rank.decrement(5);
+        let next_rank = rank.down_n(5);
         assert_eq!(next_rank, None);
     }
 
@@ -272,20 +318,20 @@ mod tests {
     #[test]
     fn test_file_increment() {
         let file = File::E;
-        let next_file = file.increment(2);
+        let next_file = file.right_n(2);
         assert_eq!(next_file, Some(File::G));
 
-        let next_file = file.increment(5);
+        let next_file = file.right_n(5);
         assert_eq!(next_file, None);
     }
 
     #[test]
     fn test_file_decrement() {
         let file = File::E;
-        let next_file = file.decrement(2);
+        let next_file = file.left_n(2);
         assert_eq!(next_file, Some(File::C));
 
-        let next_file = file.decrement(5);
+        let next_file = file.left_n(5);
         assert_eq!(next_file, None);
     }
 }

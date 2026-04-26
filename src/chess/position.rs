@@ -4,7 +4,8 @@ use std::{
 };
 
 use crate::chess::{
-    Bitboard, Color, File, NUM_COLORS, NUM_PIECES, NUM_RANKS, Piece, Rank, Square, error::Error,
+    Bitboard, Color, File, NUM_COLORS, NUM_PIECES, NUM_RANKS, Piece, PieceType, Rank, Square,
+    error::Error, movegen::Move,
 };
 
 pub(crate) const NUM_BITBOARDS: usize = NUM_COLORS * NUM_PIECES;
@@ -67,35 +68,94 @@ pub struct Position {
     half_move_clock: u8,
 }
 
-fn parse_fen_board(fen_board: &str) -> Result<[Bitboard; NUM_BITBOARDS], Error> {
-    let piece_placement: Vec<&str> = fen_board.split(FEN_RANK_SEPARATOR).collect();
-    if piece_placement.len() != NUM_RANKS {
-        return Err(Error::InvalidFen);
+impl Position {
+    pub fn side_to_move(&self) -> Color {
+        self.side_to_move
     }
 
-    let mut bitboards = [Bitboard::EMPTY; NUM_BITBOARDS];
-    let mut rank_opt = Some(Rank::Eight);
-    for &rank_str in piece_placement.iter() {
-        let rank = rank_opt.ok_or(Error::InvalidFen)?;
-        let mut file_opt = Some(File::A);
-        for c in rank_str.chars() {
-            let file = file_opt.ok_or(Error::InvalidFen)?;
-            if c.is_numeric() {
-                let count = c.to_digit(10).ok_or(Error::ParseError)?;
-                file_opt = file.increment(count as u8);
-            } else if c.is_alphabetic() {
-                let piece: Piece = c.to_string().parse()?;
-                bitboards[piece] |= Bitboard(1 << Square::new(file, rank) as u64);
-                file_opt = file.increment(1);
-            } else {
-                return Err(Error::InvalidFen);
+    pub fn occupied(&self) -> Bitboard {
+        self.bitboards
+            .iter()
+            .fold(Bitboard::EMPTY, |acc, bb| acc | *bb)
+    }
+
+    pub fn empty_squares(&self) -> Bitboard {
+        !self.occupied()
+    }
+
+    /// Fetches all instances of a given piece on the board.
+    pub fn piece(&self, piece: Piece) -> Bitboard {
+        self.bitboards[piece]
+    }
+
+    pub fn has_en_passant(&self) -> bool {
+        self.en_passant_square.is_some()
+    }
+
+    pub fn en_passant_square(&self) -> Option<Square> {
+        self.en_passant_square
+    }
+
+    pub fn castling_rights(&self, color: Color) -> CastlingRights {
+        self.castling_rights[color]
+    }
+
+    pub fn color_pieces(&self, color: Color) -> Bitboard {
+        let range = if color.is_white() {
+            0..NUM_PIECES
+        } else {
+            NUM_PIECES..NUM_BITBOARDS
+        };
+        let mut combined_pieces = Bitboard::EMPTY;
+        for i in range {
+            combined_pieces |= self.bitboards[i];
+        }
+
+        combined_pieces
+    }
+
+    pub fn get_piece_at(&self, square: Square) -> Option<Piece> {
+        let mut piece_opt = None;
+        let square_bb = Bitboard::from(square);
+        for (i, bb) in self.bitboards.iter().enumerate() {
+            if *bb & square_bb != Bitboard::EMPTY {
+                let color = if i < NUM_PIECES {
+                    Color::White
+                } else {
+                    Color::Black
+                };
+
+                piece_opt = Some(Piece::new(
+                    color,
+                    PieceType::try_from(i % NUM_BITBOARDS).ok()?,
+                ));
+                break;
             }
         }
 
-        rank_opt = rank.decrement(1);
+        piece_opt
     }
 
-    Ok(bitboards)
+    /// Attempts to make a move.
+    ///
+    /// Takes a psuedo-legal move and attempts to update board state according to the moves. If
+    /// the move does not align with board state (ex. No piece exists at the source square), an
+    /// error is returned.
+    pub fn make_move(&mut self, _mv: Move) -> bool {
+        false
+    }
+
+    /// Attempts to unmake a move
+    ///
+    /// Takes a psuedo-legal move and attempts to update board state according to undoing the moves. If
+    /// the move does not align with board state, a panic! will occur.
+    pub fn unmake_move(&mut self, _mv: Move) {
+        todo!()
+    }
+
+    pub fn is_checked(&self) -> bool {
+        todo!()
+    }
 }
 
 impl FromStr for Position {
@@ -152,6 +212,37 @@ impl Default for Position {
     fn default() -> Self {
         Self::from_str(STARTING_FEN).expect("Failed to parse starting FEN position")
     }
+}
+
+fn parse_fen_board(fen_board: &str) -> Result<[Bitboard; NUM_BITBOARDS], Error> {
+    let piece_placement: Vec<&str> = fen_board.split(FEN_RANK_SEPARATOR).collect();
+    if piece_placement.len() != NUM_RANKS {
+        return Err(Error::InvalidFen);
+    }
+
+    let mut bitboards = [Bitboard::EMPTY; NUM_BITBOARDS];
+    let mut rank_opt = Some(Rank::Eight);
+    for &rank_str in piece_placement.iter() {
+        let rank = rank_opt.ok_or(Error::InvalidFen)?;
+        let mut file_opt = Some(File::A);
+        for c in rank_str.chars() {
+            let file = file_opt.ok_or(Error::InvalidFen)?;
+            if c.is_numeric() {
+                let count = c.to_digit(10).ok_or(Error::ParseError)?;
+                file_opt = file.right_n(count as u8);
+            } else if c.is_alphabetic() {
+                let piece: Piece = c.to_string().parse()?;
+                bitboards[piece] |= Bitboard(1 << Square::new(file, rank) as u64);
+                file_opt = file.right_n(1);
+            } else {
+                return Err(Error::InvalidFen);
+            }
+        }
+
+        rank_opt = rank.down_n(1);
+    }
+
+    Ok(bitboards)
 }
 
 #[cfg(test)]
