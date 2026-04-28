@@ -1,8 +1,8 @@
 use std::{
     fmt::{Debug, Display, Write},
     ops::{
-        BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Index, IndexMut, Neg, Not,
-        Shl, ShlAssign, Shr, ShrAssign,
+        Add, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Index, IndexMut, Neg,
+        Not, Shl, ShlAssign, Shr, ShrAssign,
     },
 };
 
@@ -33,12 +33,13 @@ impl Direction {
             Direction::SouthWest => Direction::NorthEast,
         }
     }
+}
 
-    pub fn is_negative(&self) -> bool {
-        matches!(
-            self,
-            Direction::South | Direction::SouthEast | Direction::SouthWest | Direction::West
-        )
+impl Add for Direction {
+    type Output = i32;
+
+    fn add(self, rhs: Direction) -> Self::Output {
+        self as i32 + rhs as i32
     }
 }
 

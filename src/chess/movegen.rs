@@ -119,6 +119,13 @@ impl Direction {
             Direction::SouthWest => 7,
         }
     }
+
+    fn is_negative(&self) -> bool {
+        matches!(
+            self,
+            Direction::South | Direction::SouthEast | Direction::SouthWest | Direction::West
+        )
+    }
 }
 
 // #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -138,6 +145,7 @@ impl Direction {
 //     }
 // }
 
+// TODO: Can eventually remove captured piece and make part of irreversible state capturing structure
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Move {
     source: Square,
@@ -203,7 +211,6 @@ pub fn generate_moves(position: &Position) -> Vec<Move> {
     moves
 }
 
-// TODO: Clean up, also missing capture promotions
 fn pawn_moves(position: &Position, moves: &mut Vec<Move>) {
     let side = position.side_to_move();
     let (forward, forward_left, forward_right) = if side.is_white() {
@@ -219,73 +226,105 @@ fn pawn_moves(position: &Position, moves: &mut Vec<Move>) {
     };
 
     let promotion_rank = if side.is_white() {
-        Rank::Eight
+        Bitboard::from(Rank::Seven)
     } else {
-        Rank::One
+        Bitboard::from(Rank::Two)
     };
 
-    let mut pawns = position.piece(Piece::new(side, PieceType::Pawn));
+    let pawns = position.piece(Piece::new(side, PieceType::Pawn));
+    let promotion_eligible_pawns = pawns & promotion_rank;
+    let promotion_ineligible_pawns = pawns & !promotion_rank;
     let enemy_pieces = position.color_pieces(!side);
     let empty = position.empty_squares();
 
-    // Compute pawn pushes
-    let single_push = pawns.shift(forward) & empty;
+    // Compute pawn pushes (exclude promotions)
+    let single_push = promotion_ineligible_pawns.shift(forward) & empty;
     let double_push = single_push.shift(forward) & empty & double_push_rank;
-    let pushes = single_push | double_push;
 
-    // Compute pawn captures, including en passant
-    let en_passant_target = position
-        .en_passant_square()
-        .map(Bitboard::from)
-        .unwrap_or(Bitboard::EMPTY);
-    let left_captures = pawns.shift(forward_left) & enemy_pieces;
-    let right_captures = pawns.shift(forward_right) & enemy_pieces;
-    let captures = left_captures | right_captures;
+    insert_pawn_moves(moves, single_push, forward as i32);
+    insert_pawn_moves(moves, double_push, forward + forward);
 
-    while let Some(source) = pawns.pop_lsb() {
-        let pawn_bb: Bitboard = source.into();
+    // Compute pawn captures
+    let captures_right = promotion_ineligible_pawns.shift(forward_right) & enemy_pieces;
+    let captures_left = promotion_ineligible_pawns.shift(forward_left) & enemy_pieces;
+    insert_pawn_captures(moves, position, captures_left, forward_left as i32);
+    insert_pawn_captures(moves, position, captures_right, forward_right as i32);
 
-        let push_file_bb: Bitboard = source.file().into();
-        let mut push_targets = push_file_bb & pushes;
-        while let Some(destination) = push_targets.pop_lsb() {
-            if destination.rank() == promotion_rank {
-                moves.push(Move::new(
-                    source,
-                    destination,
-                    Some(PieceType::Knight),
-                    None,
-                ));
-                moves.push(Move::new(
-                    source,
-                    destination,
-                    Some(PieceType::Bishop),
-                    None,
-                ));
-                moves.push(Move::new(source, destination, Some(PieceType::Rook), None));
-                moves.push(Move::new(source, destination, Some(PieceType::Queen), None));
-            } else {
-                moves.push(Move::new(source, destination, None, None));
-            }
+    if position.has_en_passant() {
+        let mut en_passant_capture_right = promotion_ineligible_pawns.shift(forward_right)
+            & position.en_passant_square().unwrap().into();
+        while let Some(to) = en_passant_capture_right.pop_lsb() {
+            let from = Bitboard::from(to)
+                .shift(forward_right.flip())
+                .pop_lsb()
+                .unwrap();
+            moves.push(Move::new(from, to, None, Some(PieceType::Pawn)));
         }
 
-        let capture_targets =
-            captures & (pawn_bb.shift(forward_left) | pawn_bb.shift(forward_right));
-        insert_moves(position, source, capture_targets, moves);
-
-        // TODO: This doesn't account for En passant from both sides
-        let en_passant =
-            en_passant_target & (pawn_bb.shift(forward_left) | pawn_bb.shift(forward_right));
-        if en_passant != Bitboard::EMPTY {
-            moves.push(Move::new(
-                source,
-                position.en_passant_square().unwrap(),
-                None,
-                position
-                    .get_piece_at(position.en_passant_square().unwrap())
-                    .map(|p| p.piece_type()),
-            ));
+        let mut en_passant_capture_left = promotion_ineligible_pawns.shift(forward_left)
+            & position.en_passant_square().unwrap().into();
+        while let Some(to) = en_passant_capture_left.pop_lsb() {
+            let from = Bitboard::from(to)
+                .shift(forward_left.flip())
+                .pop_lsb()
+                .unwrap();
+            moves.push(Move::new(from, to, None, Some(PieceType::Pawn)));
         }
     }
+
+    // Compute promotions
+    let push_promotions = promotion_eligible_pawns.shift(forward) & empty;
+    let capture_promo_right = promotion_eligible_pawns.shift(forward_right) & enemy_pieces;
+    let capture_promo_left = promotion_eligible_pawns.shift(forward_left) & enemy_pieces;
+
+    insert_promotion(moves, position, push_promotions, forward);
+    insert_promotion(moves, position, capture_promo_right, forward_right);
+    insert_promotion(moves, position, capture_promo_left, forward_left);
+}
+
+fn insert_pawn_captures(
+    moves: &mut Vec<Move>,
+    position: &Position,
+    mut to_bb: Bitboard,
+    direction: i32,
+) {
+    while let Some(to) = to_bb.pop_lsb() {
+        moves.push(Move::new(
+            to,
+            (to - direction).unwrap(),
+            None,
+            position.get_piece_at(to).map(|p| p.piece_type()),
+        ));
+    }
+}
+
+fn insert_pawn_moves(moves: &mut Vec<Move>, mut to_bb: Bitboard, direction: i32) {
+    while let Some(to) = to_bb.pop_lsb() {
+        moves.push(Move::new(to, (to - direction).unwrap(), None, None));
+    }
+}
+
+fn insert_promotion(
+    moves: &mut Vec<Move>,
+    position: &Position,
+    mut dest_bb: Bitboard,
+    direction: Direction,
+) {
+    while let Some(dest) = dest_bb.pop_lsb() {
+        make_promotion(
+            moves,
+            (dest - direction as i32).unwrap(),
+            dest,
+            position.get_piece_at(dest).map(|p| p.piece_type()),
+        );
+    }
+}
+
+fn make_promotion(moves: &mut Vec<Move>, source: Square, dest: Square, capture: Option<PieceType>) {
+    moves.push(Move::new(source, dest, Some(PieceType::Knight), capture));
+    moves.push(Move::new(source, dest, Some(PieceType::Bishop), capture));
+    moves.push(Move::new(source, dest, Some(PieceType::Rook), capture));
+    moves.push(Move::new(source, dest, Some(PieceType::Queen), capture));
 }
 
 fn knight_moves(position: &Position, moves: &mut Vec<Move>) {

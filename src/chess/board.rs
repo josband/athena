@@ -1,6 +1,9 @@
-use std::str::FromStr;
+use std::{
+    ops::{Add, Sub},
+    str::FromStr,
+};
 
-use crate::chess::Error;
+use crate::chess::{Bitboard, Error};
 
 pub const NUM_RANKS: usize = 8;
 pub const NUM_FILES: usize = 8;
@@ -236,6 +239,27 @@ impl Square {
             rank: Some(Rank::One),
             file: Some(File::A),
         }
+    }
+}
+
+impl Sub<i32> for Square {
+    type Output = Option<Self>;
+
+    fn sub(self, rhs: i32) -> Self::Output {
+        self + -rhs
+    }
+}
+
+impl Add<i32> for Square {
+    type Output = Option<Self>;
+
+    fn add(self, rhs: i32) -> Self::Output {
+        if rhs.is_negative() {
+            Bitboard::from(self) >> (-rhs as u64)
+        } else {
+            Bitboard::from(self) << (rhs as u64)
+        }
+        .pop_lsb()
     }
 }
 
