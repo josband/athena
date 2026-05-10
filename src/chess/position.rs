@@ -4,13 +4,13 @@ use std::{
 };
 
 use crate::chess::{
-    Bitboard, Color, File, NUM_COLORS, NUM_PIECES, NUM_RANKS, Piece, PieceType, Rank, Square,
-    error::Error, movegen::Move,
+    error::Error, movegen::Move, Bitboard, Color, File, Piece, PieceType, Rank, Square, NUM_COLORS,
+    NUM_PIECES, NUM_RANKS,
 };
 
-pub(crate) const NUM_BITBOARDS: usize = NUM_COLORS * NUM_PIECES;
 pub const FEN_RANK_SEPARATOR: char = '/';
 pub const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+pub(crate) const NUM_BITBOARDS: usize = NUM_COLORS * NUM_PIECES;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CastlingRights {
@@ -48,6 +48,14 @@ impl FromStr for CastlingRights {
             _ => Err(Error::ParseError),
         }
     }
+}
+
+/// State that cannot be revovered by the inverse of a move
+pub struct IrreversibleState {
+    castling_rights: [CastlingRights; NUM_COLORS],
+    en_passant_square: Option<Square>,
+    half_move_clock: u8,
+    // Likely need to store captured pieces
 }
 
 /// Representation of a chess position.
@@ -141,8 +149,12 @@ impl Position {
     /// Takes a psuedo-legal move and attempts to update board state according to the moves. If
     /// the move does not align with board state (ex. No piece exists at the source square), an
     /// error is returned.
-    pub fn make_move(&mut self, _mv: Move) -> bool {
-        false
+    pub fn make_move(&mut self, mv: Move) -> bool {
+        let saved_state = self.state();
+        let from = mv.from_sq().bitboard();
+        let to = mv.to_sq().bitboard();
+
+        true
     }
 
     /// Attempts to unmake a move
@@ -155,6 +167,14 @@ impl Position {
 
     pub fn is_checked(&self) -> bool {
         todo!()
+    }
+
+    fn state(&self) -> IrreversibleState {
+        IrreversibleState {
+            castling_rights: self.castling_rights,
+            en_passant_square: self.en_passant_square,
+            half_move_clock: self.half_move_clock,
+        }
     }
 }
 

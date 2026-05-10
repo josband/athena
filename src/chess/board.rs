@@ -234,6 +234,10 @@ impl Square {
         }
     }
 
+    pub fn bitboard(&self) -> Bitboard {
+        Bitboard::from(*self)
+    }
+
     pub fn values() -> SquaresIter {
         SquaresIter {
             rank: Some(Rank::One),

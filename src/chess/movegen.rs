@@ -128,73 +128,37 @@ impl Direction {
     }
 }
 
-// #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-// struct MoveBuilder {
-//     from: Option<Square>,
-//     to: Option<Square>,
-//     promotion_piece: Option<PieceType>,
-// }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MoveKind {
+    Quiet,
+    Capture,
+    EnPassant,
+    Castle,
+    Promotion(PieceType),
+}
 
-// impl MoveBuilder {
-//     pub fn new() -> Self {
-//         Self { from: None, to: None, promotion_piece: None }
-//     }
-
-//     pub fn build(self) -> Move {
-//         todo!()
-//     }
-// }
-
-// TODO: Can eventually remove captured piece and make part of irreversible state capturing structure
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Move {
-    source: Square,
-    target: Square,
-    promotion_piece: Option<PieceType>,
-    captured_piece: Option<PieceType>,
-    // is_castle: bool,
-    // is_ep: bool,
+    from: Square,
+    to: Square,
+    kind: MoveKind,
 }
 
 impl Move {
-    pub fn new(
-        source: Square,
-        target: Square,
-        promotion_piece: Option<PieceType>,
-        captured_piece: Option<PieceType>,
-    ) -> Self {
-        Self {
-            source,
-            target,
-            promotion_piece,
-            captured_piece,
-        }
+    pub fn new(from: Square, to: Square, kind: MoveKind) -> Self {
+        Self { from, to, kind }
     }
 
     pub fn from_sq(&self) -> Square {
-        self.source
+        self.from
     }
 
     pub fn to_sq(&self) -> Square {
-        self.target
+        self.to
     }
 
-    // TODO: Need to track the special move
-    pub fn is_castle_move(&self) -> bool {
-        false
-    }
-
-    // TODO: Need to track the special move
-    pub fn is_en_passant_move(&self) -> bool {
-        false
-    }
-
-    pub fn is_promotion(&self) -> bool {
-        self.promotion_piece.is_some()
-    }
-
-    pub fn is_capture(&self) -> bool {
-        self.captured_piece.is_some()
+    pub fn kind(&self) -> MoveKind {
+        self.kind
     }
 }
 
@@ -247,8 +211,8 @@ fn pawn_moves(position: &Position, moves: &mut Vec<Move>) {
     // Compute pawn captures
     let captures_right = promotion_ineligible_pawns.shift(forward_right) & enemy_pieces;
     let captures_left = promotion_ineligible_pawns.shift(forward_left) & enemy_pieces;
-    insert_pawn_captures(moves, position, captures_left, forward_left as i32);
-    insert_pawn_captures(moves, position, captures_right, forward_right as i32);
+    insert_pawn_captures(moves, captures_left, forward_left as i32);
+    insert_pawn_captures(moves, captures_right, forward_right as i32);
 
     if position.has_en_passant() {
         let mut en_passant_capture_right = promotion_ineligible_pawns.shift(forward_right)
@@ -258,7 +222,7 @@ fn pawn_moves(position: &Position, moves: &mut Vec<Move>) {
                 .shift(forward_right.flip())
                 .pop_lsb()
                 .unwrap();
-            moves.push(Move::new(from, to, None, Some(PieceType::Pawn)));
+            moves.push(Move::new(from, to, MoveKind::EnPassant));
         }
 
         let mut en_passant_capture_left = promotion_ineligible_pawns.shift(forward_left)
@@ -268,7 +232,7 @@ fn pawn_moves(position: &Position, moves: &mut Vec<Move>) {
                 .shift(forward_left.flip())
                 .pop_lsb()
                 .unwrap();
-            moves.push(Move::new(from, to, None, Some(PieceType::Pawn)));
+            moves.push(Move::new(from, to, MoveKind::EnPassant));
         }
     }
 
@@ -277,54 +241,50 @@ fn pawn_moves(position: &Position, moves: &mut Vec<Move>) {
     let capture_promo_right = promotion_eligible_pawns.shift(forward_right) & enemy_pieces;
     let capture_promo_left = promotion_eligible_pawns.shift(forward_left) & enemy_pieces;
 
-    insert_promotion(moves, position, push_promotions, forward);
-    insert_promotion(moves, position, capture_promo_right, forward_right);
-    insert_promotion(moves, position, capture_promo_left, forward_left);
+    insert_promotion(moves, push_promotions, forward);
+    insert_promotion(moves, capture_promo_right, forward_right);
+    insert_promotion(moves, capture_promo_left, forward_left);
 }
 
-fn insert_pawn_captures(
-    moves: &mut Vec<Move>,
-    position: &Position,
-    mut to_bb: Bitboard,
-    direction: i32,
-) {
+fn insert_pawn_captures(moves: &mut Vec<Move>, mut to_bb: Bitboard, direction: i32) {
     while let Some(to) = to_bb.pop_lsb() {
-        moves.push(Move::new(
-            to,
-            (to - direction).unwrap(),
-            None,
-            position.get_piece_at(to).map(|p| p.piece_type()),
-        ));
+        moves.push(Move::new(to, (to - direction).unwrap(), MoveKind::Capture));
     }
 }
 
 fn insert_pawn_moves(moves: &mut Vec<Move>, mut to_bb: Bitboard, direction: i32) {
     while let Some(to) = to_bb.pop_lsb() {
-        moves.push(Move::new(to, (to - direction).unwrap(), None, None));
+        moves.push(Move::new(to, (to - direction).unwrap(), MoveKind::Quiet));
     }
 }
 
-fn insert_promotion(
-    moves: &mut Vec<Move>,
-    position: &Position,
-    mut dest_bb: Bitboard,
-    direction: Direction,
-) {
+fn insert_promotion(moves: &mut Vec<Move>, mut dest_bb: Bitboard, direction: Direction) {
     while let Some(dest) = dest_bb.pop_lsb() {
-        make_promotion(
-            moves,
-            (dest - direction as i32).unwrap(),
-            dest,
-            position.get_piece_at(dest).map(|p| p.piece_type()),
-        );
+        make_promotion(moves, (dest - direction as i32).unwrap(), dest);
     }
 }
 
-fn make_promotion(moves: &mut Vec<Move>, source: Square, dest: Square, capture: Option<PieceType>) {
-    moves.push(Move::new(source, dest, Some(PieceType::Knight), capture));
-    moves.push(Move::new(source, dest, Some(PieceType::Bishop), capture));
-    moves.push(Move::new(source, dest, Some(PieceType::Rook), capture));
-    moves.push(Move::new(source, dest, Some(PieceType::Queen), capture));
+fn make_promotion(moves: &mut Vec<Move>, source: Square, dest: Square) {
+    moves.push(Move::new(
+        source,
+        dest,
+        MoveKind::Promotion(PieceType::Knight),
+    ));
+    moves.push(Move::new(
+        source,
+        dest,
+        MoveKind::Promotion(PieceType::Bishop),
+    ));
+    moves.push(Move::new(
+        source,
+        dest,
+        MoveKind::Promotion(PieceType::Rook),
+    ));
+    moves.push(Move::new(
+        source,
+        dest,
+        MoveKind::Promotion(PieceType::Queen),
+    ));
 }
 
 fn knight_moves(position: &Position, moves: &mut Vec<Move>) {
@@ -387,18 +347,11 @@ fn king_moves(position: &Position, moves: &mut Vec<Move>) {
     let castle_bb = castle_mask & free;
 
     while let Some(capture_square) = captures_bb.pop_lsb() {
-        moves.push(Move::new(
-            king_square,
-            capture_square,
-            None,
-            position
-                .get_piece_at(capture_square)
-                .map(|p| p.piece_type()),
-        ));
+        moves.push(Move::new(king_square, capture_square, MoveKind::Capture));
     }
 
     while let Some(move_square) = quiet_bb.pop_lsb() {
-        moves.push(Move::new(king_square, move_square, None, None));
+        moves.push(Move::new(king_square, move_square, MoveKind::Quiet));
     }
 
     match position.castling_rights(to_move) {
@@ -423,12 +376,13 @@ fn insert_moves(
     moves: &mut Vec<Move>,
 ) {
     while let Some(dest) = locations.pop_lsb() {
-        moves.push(Move::new(
-            source,
-            dest,
-            None,
-            position.get_piece_at(dest).map(|p| p.piece_type()),
-        ));
+        let move_kind = if position.get_piece_at(dest).is_some() {
+            MoveKind::Capture
+        } else {
+            MoveKind::Quiet
+        };
+
+        moves.push(Move::new(source, dest, move_kind));
     }
 }
 
@@ -440,7 +394,7 @@ fn generate_queen_castle(
 ) {
     if open_castle_bb & castle_mask == castle_mask {
         let castle_square = Square::new(king_square.file().left_n(2).unwrap(), king_square.rank());
-        moves.push(Move::new(king_square, castle_square, None, None));
+        moves.push(Move::new(king_square, castle_square, MoveKind::Castle));
     }
 }
 
@@ -452,7 +406,7 @@ fn generate_king_castle(
 ) {
     if open_castle_bb & castle_mask == castle_mask {
         let castle_square = Square::new(king_square.file().right_n(2).unwrap(), king_square.rank());
-        moves.push(Move::new(king_square, castle_square, None, None));
+        moves.push(Move::new(king_square, castle_square, MoveKind::Castle));
     }
 }
 
@@ -486,6 +440,7 @@ fn get_ray_attacks(square: Square, dir: Direction, occupied: Bitboard) -> Bitboa
     } else {
         blockers.lsb()
     };
+
     if let Some(block_square) = blocker {
         attacks ^= SLIDING_ATTACK_MASKS[dir.mask_cache_index()][block_square.lsf_index()];
     }
@@ -498,7 +453,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_name() {
+    fn test_start_position() {
         let p = Position::default();
         let moves = generate_moves(&p);
 
