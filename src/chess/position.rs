@@ -1,11 +1,14 @@
 use std::{
+    fmt::Display,
     ops::{Index, IndexMut},
     str::FromStr,
 };
 
 use crate::chess::{
-    error::Error, movegen::Move, Bitboard, Color, File, Piece, PieceType, Rank, Square, NUM_COLORS,
-    NUM_PIECES, NUM_RANKS,
+    Bitboard, Color, File, NUM_COLORS, NUM_FILES, NUM_PIECES, NUM_RANKS, Piece, PieceType, Rank,
+    Square,
+    error::Error,
+    movegen::{Move, MoveKind, attack_mask, bishop_attacks, pawn_attack_mask, rook_attacks},
 };
 
 pub const FEN_RANK_SEPARATOR: char = '/';
@@ -13,11 +16,27 @@ pub const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQ
 pub(crate) const NUM_BITBOARDS: usize = NUM_COLORS * NUM_PIECES;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum CastlingRights {
-    All,
-    QueenSide,
-    KingSide,
-    None,
+    All = 0b11,
+    QueenSide = 0b01,
+    KingSide = 0b10,
+    None = 0b00,
+}
+
+impl CastlingRights {
+    /// Updates castling rights to not include a given set of rights
+    pub fn downgrade(&self, downgrade: CastlingRights) -> CastlingRights {
+        let self_byte = *self as u8;
+        let other_byte = downgrade as u8;
+        if downgrade == CastlingRights::None || self_byte & other_byte == 0 {
+            return *self;
+        }
+
+        let result_byte = self_byte ^ (self_byte & other_byte);
+
+        unsafe { std::mem::transmute(result_byte) }
+    }
 }
 
 impl Index<Color> for [CastlingRights; NUM_COLORS] {
@@ -50,12 +69,13 @@ impl FromStr for CastlingRights {
     }
 }
 
-/// State that cannot be revovered by the inverse of a move
-pub struct IrreversibleState {
+/// State that cannot be recovered by the inverse of a move alone.
+#[derive(Debug, PartialEq, Eq)]
+pub struct State {
     castling_rights: [CastlingRights; NUM_COLORS],
     en_passant_square: Option<Square>,
     half_move_clock: u8,
-    // Likely need to store captured pieces
+    captured_piece: Option<Piece>,
 }
 
 /// Representation of a chess position.
@@ -67,13 +87,55 @@ pub struct IrreversibleState {
 /// is not a part of the position itself and is tracked as part of an entire game. Practically
 /// all rules can be applied based on the position alone. The only rule that cannot be applied
 /// from a position is the determination of three fold repititions.
-#[allow(unused)]
+#[derive(Debug)]
 pub struct Position {
     bitboards: [Bitboard; NUM_BITBOARDS],
     side_to_move: Color,
     castling_rights: [CastlingRights; NUM_COLORS],
     en_passant_square: Option<Square>,
     half_move_clock: u8,
+}
+
+const RANK_DIVIDER: &str = "+---+---+---+---+---+---+---+---+";
+const FILE_LABEL_TEMPLATE: &str = "  a   b   c   d   e   f   g   h  ";
+macro_rules! rank_piece_template {
+    () => {
+        "| {} | {} | {} | {} | {} | {} | {} | {} | {}"
+    };
+}
+
+impl Display for Position {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{}", RANK_DIVIDER)?;
+        let mut piece_strs: [String; NUM_FILES] = std::array::from_fn(|_| String::new());
+        for rank in Rank::values_from(Rank::Eight).rev() {
+            for file in File::values() {
+                let piece_str = self
+                    .get_piece_at(&Square::new(file, rank))
+                    .map(|x| x.to_string())
+                    .unwrap_or_else(|| " ".to_string());
+
+                piece_strs[file as usize] = piece_str;
+            }
+
+            writeln!(
+                f,
+                rank_piece_template!(),
+                piece_strs[0],
+                piece_strs[1],
+                piece_strs[2],
+                piece_strs[3],
+                piece_strs[4],
+                piece_strs[5],
+                piece_strs[6],
+                piece_strs[7],
+                rank as u8 + 1
+            )?;
+            writeln!(f, "{}", RANK_DIVIDER)?;
+        }
+
+        writeln!(f, "{}", FILE_LABEL_TEMPLATE)
+    }
 }
 
 impl Position {
@@ -122,9 +184,9 @@ impl Position {
         combined_pieces
     }
 
-    pub fn get_piece_at(&self, square: Square) -> Option<Piece> {
+    pub fn get_piece_at(&self, square: &Square) -> Option<Piece> {
         let mut piece_opt = None;
-        let square_bb = Bitboard::from(square);
+        let square_bb = Bitboard::from(*square);
         for (i, bb) in self.bitboards.iter().enumerate() {
             if *bb & square_bb != Bitboard::EMPTY {
                 let color = if i < NUM_PIECES {
@@ -133,10 +195,7 @@ impl Position {
                     Color::Black
                 };
 
-                piece_opt = Some(Piece::new(
-                    color,
-                    PieceType::try_from(i % NUM_BITBOARDS).ok()?,
-                ));
+                piece_opt = Some(Piece::new(color, PieceType::try_from(i % NUM_PIECES).ok()?));
                 break;
             }
         }
@@ -147,37 +206,322 @@ impl Position {
     /// Attempts to make a move.
     ///
     /// Takes a psuedo-legal move and attempts to update board state according to the moves. If
-    /// the move does not align with board state (ex. No piece exists at the source square), an
-    /// error is returned.
-    pub fn make_move(&mut self, mv: Move) -> bool {
-        let saved_state = self.state();
-        let from = mv.from_sq().bitboard();
-        let to = mv.to_sq().bitboard();
+    /// the move is not pseudo-legal, `make_move` can panic (for now).
+    pub fn make_move(&mut self, mv: Move, history: &mut Vec<State>) -> bool {
+        let mut is_legal = true;
+        let mut saved_state = self.board_state();
 
-        true
+        let us = self.side_to_move();
+        let them = !us;
+        let from = mv.from_sq();
+        let to = mv.to_sq();
+        let kind = mv.kind();
+        let moved_piece = self.get_piece_at(&from).expect("no piece at from square");
+        let captured_piece = self.get_piece_at(&to);
+
+        debug_assert_eq!(
+            moved_piece.color(),
+            us,
+            "moved piece is not of the expected color"
+        );
+
+        // Confirm we aren't doing a castle in check to avoid making updates
+        if mv.kind() == MoveKind::Castle && self.is_checked(us) {
+            return false;
+        }
+
+        // Update the moved piece bitboard
+        let moved_piece_bb = self.piece_mut(moved_piece);
+        *moved_piece_bb ^= from.into();
+        *moved_piece_bb ^= to.into();
+
+        // Handle special move cases
+        match kind {
+            MoveKind::Capture => {
+                let captured_piece = captured_piece
+                    .expect("captured piece does not exist on internal board representation");
+                debug_assert_eq!(
+                    captured_piece.color(),
+                    them,
+                    "Captured piece is not of the opposite color"
+                );
+
+                let captured_piece_bb = self.piece_mut(captured_piece);
+                *captured_piece_bb ^= to.into();
+                saved_state.captured_piece = Some(captured_piece);
+            }
+            MoveKind::EnPassant => {
+                debug_assert_ne!(self.en_passant_square(), None);
+                let ep_target = self
+                    .en_passant_square()
+                    .expect("no En Passant target for pseudo-legal move to be possible");
+                let capture_square = Square::new(ep_target.file(), from.rank());
+                *self.piece_mut(Piece::new(them, PieceType::Pawn)) ^= capture_square.into();
+                saved_state.captured_piece = Some(Piece::new(them, PieceType::Pawn));
+            }
+            MoveKind::Castle => {
+                let king_side = to.file() == File::G;
+                let rook_destination =
+                    Square::new(if king_side { File::F } else { File::D }, to.rank());
+                let rooks_bb = self.piece_mut(Piece::new(us, PieceType::Rook));
+                let mut rook_mask = (Bitboard(1) << (if king_side { 7 } else { 0 }))
+                    << if us.is_white() { 0 } else { 56 };
+                rook_mask |= rook_destination.into();
+                *rooks_bb ^= rook_mask;
+                self.castling_rights[us] = CastlingRights::None;
+                if self.is_attacked(rook_destination, them) {
+                    is_legal = false;
+                }
+            }
+            MoveKind::Promotion(piece_type) => {
+                *self.piece_mut(moved_piece) ^= to.into();
+                *self.piece_mut(Piece::new(us, piece_type)) ^= to.into();
+
+                // We moved the pawn which may be causing issues
+                if from.file() != to.file() {
+                    let captured_piece = captured_piece
+                        .expect("captured EP/Promo piece not in board representation");
+
+                    *self.piece_mut(captured_piece) ^= to.into();
+                }
+
+                if captured_piece.is_some() {
+                    saved_state.captured_piece = captured_piece;
+                }
+            }
+            _ => (),
+        }
+
+        // Update en-passant square
+        self.en_passant_square = if PieceType::Pawn == moved_piece.piece_type() {
+            let enemy_pawns = self.piece(Piece::new(them, PieceType::Pawn));
+            if from.rank().distance(&to.rank()).abs() == 2
+                && (enemy_pawns
+                    & (to.east().map(Bitboard::from).unwrap_or(Bitboard::EMPTY)
+                        | to.west().map(Bitboard::from).unwrap_or(Bitboard::EMPTY))
+                    != Bitboard::EMPTY)
+            {
+                Some(if us.is_white() {
+                    from.north().unwrap()
+                } else {
+                    from.south().unwrap()
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Update castling rights/halfmove clock, if king/rook moved
+        match moved_piece.piece_type() {
+            PieceType::King => {
+                self.castling_rights[us] = CastlingRights::None;
+            }
+            PieceType::Rook => {
+                self.remove_rights_for_rook(us, from);
+            }
+            _ => (),
+        }
+
+        // Update castling rights after capture
+        if let Some(p) = captured_piece
+            && p.piece_type() == PieceType::Rook
+        {
+            self.remove_rights_for_rook(them, to);
+        }
+
+        // Halfmove clock is reset by any pawn move and/or capture
+        self.half_move_clock =
+            if mv.kind() == MoveKind::Capture || moved_piece.piece_type() == PieceType::Pawn {
+                0
+            } else {
+                self.half_move_clock + 1
+            };
+
+        self.side_to_move = !self.side_to_move;
+
+        history.push(saved_state);
+        if is_legal && self.is_checked(us) {
+            is_legal = false;
+        }
+
+        if !is_legal {
+            self.unmake_move(mv, history);
+        }
+
+        is_legal
+    }
+
+    /// Returns whether a specified side is in check
+    pub fn is_checked(&self, side: Color) -> bool {
+        let king_square = self
+            .piece(Piece::new(side, PieceType::King))
+            .pop_lsb()
+            .expect("no king on board");
+        self.is_attacked(king_square, !side)
     }
 
     /// Attempts to unmake a move
     ///
     /// Takes a psuedo-legal move and attempts to update board state according to undoing the moves. If
     /// the move does not align with board state, a panic! will occur.
-    pub fn unmake_move(&mut self, _mv: Move) {
-        todo!()
+    pub fn unmake_move(&mut self, mv: Move, history: &mut Vec<State>) {
+        if history.is_empty() {
+            return;
+        }
+
+        let state = history.pop().expect("history length of 0");
+        let them = self.side_to_move();
+        let us = !them;
+        let from = mv.to_sq();
+        let to = mv.from_sq();
+        let moved_piece = self
+            .get_piece_at(&from)
+            .expect("no piece at moved location");
+
+        // Move piece back to original square
+        let moved_piece_bb = self.piece_mut(moved_piece);
+        *moved_piece_bb ^= from.into();
+        *moved_piece_bb ^= to.into();
+
+        // Handle special case moves
+        match mv.kind() {
+            MoveKind::EnPassant => {
+                debug_assert!(state.en_passant_square.is_some());
+                debug_assert_eq!(state.en_passant_square.unwrap(), from);
+                debug_assert!(state.captured_piece.is_some());
+                debug_assert_eq!(
+                    state.captured_piece.unwrap(),
+                    Piece::new(them, PieceType::Pawn)
+                );
+
+                let ep_rank = if us.is_white() {
+                    Rank::Five
+                } else {
+                    Rank::Four
+                };
+
+                let captured_piece = state
+                    .captured_piece
+                    .expect("no taken pawn stored for En Passant");
+                let en_passant_square = Square::new(from.file(), ep_rank);
+                *self.piece_mut(captured_piece) ^= en_passant_square.into();
+            }
+            MoveKind::Castle => {
+                // Just need to restore rook back to home file
+                let king_file = from.file();
+                let king_rank = from.rank();
+                debug_assert!(
+                    (king_rank == Rank::One && us.is_white())
+                        || (king_rank == Rank::Eight && !us.is_white())
+                );
+                let (rook_home_file, rook_castle_file) = if king_file == File::C {
+                    (File::A, File::D)
+                } else {
+                    (File::H, File::F)
+                };
+
+                let rook_castle_sq = Square::new(rook_castle_file, king_rank);
+                let rook_home_sq = Square::new(rook_home_file, king_rank);
+                let rooks_bb = self.piece_mut(Piece::new(us, PieceType::Rook));
+                *rooks_bb ^= rook_castle_sq.into();
+                *rooks_bb ^= rook_home_sq.into();
+            }
+            MoveKind::Promotion(_) => {
+                // Swap the piece type for the piece previously moved to to
+                *moved_piece_bb ^= to.into();
+
+                // Change moved piece over to pawn
+                let pawn = Piece::new(us, PieceType::Pawn);
+                *self.piece_mut(pawn) ^= to.into();
+            }
+            _ => (),
+        }
+
+        // Place captured piece back on square
+        if let Some(piece) = state.captured_piece
+            && mv.kind() != MoveKind::EnPassant
+        {
+            *self.piece_mut(piece) ^= from.into();
+        }
+
+        // Restore remaining board state
+        self.castling_rights = state.castling_rights;
+        self.half_move_clock = state.half_move_clock;
+        self.en_passant_square = state.en_passant_square;
+        self.side_to_move = us;
     }
 
-    pub fn is_checked(&self) -> bool {
-        todo!()
+    fn remove_rights_for_rook(&mut self, side: Color, rook_sq: Square) {
+        let home_rank = if side.is_white() {
+            Rank::One
+        } else {
+            Rank::Eight
+        };
+        let queen_side_rook_file = File::A;
+        let king_side_rook_file = File::H;
+
+        if rook_sq.rank() == home_rank
+            && (rook_sq.file() == queen_side_rook_file || rook_sq.file() == king_side_rook_file)
+        {
+            let rights_downgrade = if rook_sq.file() == king_side_rook_file {
+                CastlingRights::KingSide
+            } else {
+                CastlingRights::QueenSide
+            };
+            self.castling_rights[side] = self.castling_rights[side].downgrade(rights_downgrade);
+        }
     }
 
-    fn state(&self) -> IrreversibleState {
-        IrreversibleState {
+    /// Returns whether or not a particular square is attacked by a specified side
+    fn is_attacked(&self, target: Square, attacking_side: Color) -> bool {
+        let pawns_bb = self.piece(Piece::new(attacking_side, PieceType::Pawn));
+        if pawns_bb & pawn_attack_mask(!attacking_side, target) != Bitboard::EMPTY {
+            return true;
+        }
+
+        let knights_bb = self.piece(Piece::new(attacking_side, PieceType::Knight));
+        if knights_bb & attack_mask(PieceType::Knight, target) != Bitboard::EMPTY {
+            return true;
+        }
+
+        let king_bb = self.piece(Piece::new(attacking_side, PieceType::King));
+        if king_bb & attack_mask(PieceType::King, target) != Bitboard::EMPTY {
+            return true;
+        }
+
+        let occupied = self.occupied();
+        let bishop_or_queen_bb = self.piece(Piece::new(attacking_side, PieceType::Bishop))
+            | self.piece(Piece::new(attacking_side, PieceType::Queen));
+        if bishop_or_queen_bb & bishop_attacks(target, occupied) != Bitboard::EMPTY {
+            return true;
+        }
+
+        let rook_or_queen_bb = self.piece(Piece::new(attacking_side, PieceType::Rook))
+            | self.piece(Piece::new(attacking_side, PieceType::Queen));
+        if rook_or_queen_bb & rook_attacks(target, occupied) != Bitboard::EMPTY {
+            return true;
+        }
+
+        false
+    }
+
+    fn piece_mut(&mut self, piece: Piece) -> &mut Bitboard {
+        &mut self.bitboards[piece]
+    }
+
+    fn board_state(&self) -> State {
+        State {
             castling_rights: self.castling_rights,
             en_passant_square: self.en_passant_square,
             half_move_clock: self.half_move_clock,
+            captured_piece: None,
         }
     }
 }
 
+// TODO: Add fullmove clock & impl Display for to FEN
 impl FromStr for Position {
     type Err = Error;
 
@@ -202,7 +546,7 @@ impl FromStr for Position {
                 .find(|(_, c)| c.is_lowercase())
                 .map(|(i, _)| i)
                 .unwrap_or(rights_str.len());
-            let (black_rights, white_rights) = rights_str.split_at(split_index);
+            let (white_rights, black_rights) = rights_str.split_at(split_index);
 
             [white_rights.parse()?, black_rights.parse()?]
         };
@@ -230,7 +574,7 @@ impl FromStr for Position {
 
 impl Default for Position {
     fn default() -> Self {
-        Self::from_str(STARTING_FEN).expect("Failed to parse starting FEN position")
+        Self::from_str(STARTING_FEN).expect("failed to parse starting FEN position")
     }
 }
 

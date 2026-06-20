@@ -1,4 +1,5 @@
 use std::{
+    fmt::Display,
     ops::{Add, Sub},
     str::FromStr,
 };
@@ -43,6 +44,23 @@ impl FromStr for File {
     }
 }
 
+impl Display for File {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let c = match self {
+            File::A => 'a',
+            File::B => 'b',
+            File::C => 'c',
+            File::D => 'd',
+            File::E => 'e',
+            File::F => 'f',
+            File::G => 'g',
+            File::H => 'h',
+        };
+
+        write!(f, "{c}")
+    }
+}
+
 impl File {
     pub fn right_n(&self, count: u8) -> Option<Self> {
         let index = (*self as u8) + count;
@@ -75,6 +93,35 @@ impl File {
             _ => Err(Error::ParseError),
         }
     }
+
+    pub(crate) fn values() -> FileIterator {
+        FileIterator::new()
+    }
+}
+
+pub struct FileIterator {
+    next: Option<File>,
+}
+
+impl FileIterator {
+    fn new() -> Self {
+        FileIterator {
+            next: Some(File::A),
+        }
+    }
+}
+
+impl Iterator for FileIterator {
+    type Item = File;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let val = self.next.take();
+        if let Some(file) = val {
+            self.next = file.right_n(1);
+        }
+
+        val
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -87,6 +134,23 @@ pub enum Rank {
     Six,
     Seven,
     Eight,
+}
+
+impl Display for Rank {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let c = match self {
+            Rank::One => '1',
+            Rank::Two => '2',
+            Rank::Three => '3',
+            Rank::Four => '4',
+            Rank::Five => '5',
+            Rank::Six => '6',
+            Rank::Seven => '7',
+            Rank::Eight => '8',
+        };
+
+        write!(f, "{c}")
+    }
 }
 
 impl Rank {
@@ -108,6 +172,10 @@ impl Rank {
         }
     }
 
+    pub fn distance(&self, other: &Self) -> i8 {
+        *self as i8 - *other as i8
+    }
+
     fn from_index(index: usize) -> Result<Self, Error> {
         match index {
             0 => Ok(Self::One),
@@ -120,6 +188,48 @@ impl Rank {
             7 => Ok(Self::Eight),
             _ => Err(Error::ParseError),
         }
+    }
+
+    pub fn values() -> RankIterator {
+        RankIterator::new(Rank::One)
+    }
+
+    pub fn values_from(start: Rank) -> RankIterator {
+        RankIterator::new(start)
+    }
+}
+
+pub struct RankIterator {
+    next: Option<Rank>,
+}
+
+impl RankIterator {
+    fn new(start: Rank) -> Self {
+        Self { next: Some(start) }
+    }
+}
+
+impl Iterator for RankIterator {
+    type Item = Rank;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let curr_rank_opt = self.next.take();
+        if let Some(curr_rank) = curr_rank_opt {
+            self.next = curr_rank.up_n(1);
+        }
+
+        curr_rank_opt
+    }
+}
+
+impl DoubleEndedIterator for RankIterator {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let curr_rank_opt = self.next.take();
+        if let Some(curr_rank) = curr_rank_opt {
+            self.next = curr_rank.down_n(1);
+        }
+
+        curr_rank_opt
     }
 }
 
@@ -172,6 +282,7 @@ impl Iterator for SquaresIter {
 
 #[rustfmt::skip]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum Square {
     A1, B1, C1, D1, E1, F1, G1, H1,
     A2, B2, C2, D2, E2, F2, G2, H2,
@@ -220,6 +331,38 @@ impl Square {
         }
     }
 
+    pub fn north(&self) -> Option<Self> {
+        if let Rank::Eight = self.rank() {
+            return None;
+        }
+
+        Some(Self::new(self.file(), self.rank().up_n(1).unwrap()))
+    }
+
+    pub fn south(&self) -> Option<Self> {
+        if let Rank::One = self.rank() {
+            return None;
+        }
+
+        Some(Self::new(self.file(), self.rank().down_n(1).unwrap()))
+    }
+
+    pub fn east(&self) -> Option<Self> {
+        if let File::H = self.file() {
+            return None;
+        }
+
+        Some(Self::new(self.file().right_n(1).unwrap(), self.rank()))
+    }
+
+    pub fn west(&self) -> Option<Self> {
+        if let File::A = self.file() {
+            return None;
+        }
+
+        Some(Self::new(self.file().left_n(1).unwrap(), self.rank()))
+    }
+
     /// Returns the index of the square using Least Significant File indexing.
     pub fn lsf_index(&self) -> usize {
         *self as usize
@@ -229,13 +372,9 @@ impl Square {
         if index > 63 {
             Err(Error::InvalidIndex)
         } else {
-            let s = unsafe { std::mem::transmute::<u8, Square>(index) };
+            let s = unsafe { std::mem::transmute::<u8, Self>(index) };
             Ok(s)
         }
-    }
-
-    pub fn bitboard(&self) -> Bitboard {
-        Bitboard::from(*self)
     }
 
     pub fn values() -> SquaresIter {
@@ -243,6 +382,12 @@ impl Square {
             rank: Some(Rank::One),
             file: Some(File::A),
         }
+    }
+}
+
+impl Display for Square {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}{}", self.file(), self.rank())
     }
 }
 

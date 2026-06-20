@@ -1,17 +1,18 @@
 use lazy_static::{initialize, lazy_static};
 
 use crate::chess::{
-    Bitboard, CastlingRights, Direction, File, NUM_SQUARES, Piece, PieceType, Position, Rank,
-    Square,
+    Bitboard, CastlingRights, Color, Direction, File, NUM_COLORS, NUM_SQUARES, Piece, PieceType,
+    Position, Rank, Square,
 };
 
 const NUM_ADJACENT_SQUARES: usize = 8;
 
 lazy_static! {
-    static ref KNIGHT_ATTACK_MASKS: [Bitboard; NUM_SQUARES] = knight_attack_masks();
+    static ref PAWN_ATTACK_MASKS: [[Bitboard; NUM_SQUARES]; NUM_COLORS] = gen_pawn_attack_masks();
+    static ref KING_ATTACK_MASKS: [Bitboard; NUM_SQUARES] = gen_king_masks();
+    static ref KNIGHT_ATTACK_MASKS: [Bitboard; NUM_SQUARES] = gen_knight_masks();
     static ref SLIDING_ATTACK_MASKS: [[Bitboard; NUM_SQUARES]; NUM_ADJACENT_SQUARES] =
-        sliding_attack_masks();
-    static ref KING_ATTACK_MASKS: [Bitboard; NUM_SQUARES] = king_attack_masks();
+        gen_sliding_masks();
 }
 
 /// Initializes global settings for move generation.
@@ -19,12 +20,69 @@ lazy_static! {
 /// This is not required, but highly reccommended. If not, these settings will
 /// be initialized on first access, which can hurt performance.
 pub fn init_movegen() {
+    initialize(&PAWN_ATTACK_MASKS);
     initialize(&KNIGHT_ATTACK_MASKS);
     initialize(&SLIDING_ATTACK_MASKS);
     initialize(&KING_ATTACK_MASKS);
 }
 
-fn king_attack_masks() -> [Bitboard; NUM_SQUARES] {
+pub(crate) fn attack_mask(piece_type: PieceType, square: Square) -> Bitboard {
+    match piece_type {
+        PieceType::Knight => KNIGHT_ATTACK_MASKS[square.lsf_index()],
+        PieceType::Bishop => diagonal_masks(square),
+        PieceType::Rook => orthogonal_masks(square),
+        PieceType::Queen => diagonal_masks(square) | orthogonal_masks(square),
+        PieceType::King => KING_ATTACK_MASKS[square.lsf_index()],
+        _ => Bitboard::EMPTY,
+    }
+}
+
+pub(crate) fn pawn_attack_mask(color: Color, square: Square) -> Bitboard {
+    PAWN_ATTACK_MASKS[color as usize][square.lsf_index()]
+}
+
+fn diagonal_masks(square: Square) -> Bitboard {
+    let square_index = square.lsf_index();
+    SLIDING_ATTACK_MASKS[Direction::NorthEast.mask_cache_index()][square_index]
+        | SLIDING_ATTACK_MASKS[Direction::NorthWest.mask_cache_index()][square_index]
+        | SLIDING_ATTACK_MASKS[Direction::SouthEast.mask_cache_index()][square_index]
+        | SLIDING_ATTACK_MASKS[Direction::SouthWest.mask_cache_index()][square_index]
+}
+
+fn orthogonal_masks(square: Square) -> Bitboard {
+    let square_index = square.lsf_index();
+    SLIDING_ATTACK_MASKS[Direction::North.mask_cache_index()][square_index]
+        | SLIDING_ATTACK_MASKS[Direction::South.mask_cache_index()][square_index]
+        | SLIDING_ATTACK_MASKS[Direction::East.mask_cache_index()][square_index]
+        | SLIDING_ATTACK_MASKS[Direction::West.mask_cache_index()][square_index]
+}
+
+fn gen_pawn_attack_masks() -> [[Bitboard; NUM_SQUARES]; NUM_COLORS] {
+    let mut pawn_masks = [[Bitboard::EMPTY; NUM_SQUARES]; NUM_COLORS];
+    for square in Square::values() {
+        if square.rank() == Rank::Eight {
+            continue;
+        }
+
+        let sq_bb = Bitboard::from(square);
+        pawn_masks[Color::White as usize][square.lsf_index()] =
+            (sq_bb.shift(Direction::East) | sq_bb.shift(Direction::West)).shift(Direction::North);
+    }
+
+    for square in Square::values() {
+        if square.rank() == Rank::One {
+            continue;
+        }
+
+        let sq_bb = Bitboard::from(square);
+        pawn_masks[Color::Black as usize][square.lsf_index()] =
+            (sq_bb.shift(Direction::East) | sq_bb.shift(Direction::West)).shift(Direction::South);
+    }
+
+    pawn_masks
+}
+
+fn gen_king_masks() -> [Bitboard; NUM_SQUARES] {
     let mut king_masks = [Bitboard::EMPTY; NUM_SQUARES];
     for s in Square::values() {
         king_masks[s.lsf_index()] = king_attack_mask(s);
@@ -41,7 +99,7 @@ fn king_attack_mask(square: Square) -> Bitboard {
     attacks | full_row.shift(Direction::North) | full_row.shift(Direction::South)
 }
 
-fn sliding_attack_masks() -> [[Bitboard; NUM_SQUARES]; NUM_ADJACENT_SQUARES] {
+fn gen_sliding_masks() -> [[Bitboard; NUM_SQUARES]; NUM_ADJACENT_SQUARES] {
     let mut sliding_masks = [[Bitboard::EMPTY; NUM_SQUARES]; NUM_ADJACENT_SQUARES];
     for square in Square::values() {
         let square_bb = Bitboard::from(square);
@@ -75,7 +133,7 @@ fn sliding_attack_masks() -> [[Bitboard; NUM_SQUARES]; NUM_ADJACENT_SQUARES] {
     sliding_masks
 }
 
-fn knight_attack_masks() -> [Bitboard; NUM_SQUARES] {
+fn gen_knight_masks() -> [Bitboard; NUM_SQUARES] {
     let mut knight_moves = [Bitboard::EMPTY; NUM_SQUARES];
     for s in Square::values() {
         let origin = Bitboard::from(s);
@@ -137,6 +195,11 @@ pub enum MoveKind {
     Promotion(PieceType),
 }
 
+/// A piece movement in chess.
+///
+/// In chess, a move commonly refers to a piece movement from **both**
+/// sides. In chess programming, a move represents a single piece movement, which is
+/// otherwise called a half-move or a ply.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Move {
     from: Square,
@@ -160,19 +223,26 @@ impl Move {
     pub fn kind(&self) -> MoveKind {
         self.kind
     }
+
+    pub fn to_uci_string(&self) -> String {
+        let promotion_char = if let MoveKind::Promotion(promotion_piece_type) = self.kind() {
+            &promotion_piece_type.to_string()
+        } else {
+            ""
+        };
+
+        format!("{}{}{}", self.from_sq(), self.to_sq(), promotion_char)
+    }
 }
 
 /// Generates all pseudo-legal moves for a given position
-pub fn generate_moves(position: &Position) -> Vec<Move> {
-    let mut moves = vec![];
-    pawn_moves(position, &mut moves);
-    knight_moves(position, &mut moves);
-    bishop_moves(position, &mut moves);
-    rook_moves(position, &mut moves);
-    queen_moves(position, &mut moves);
-    king_moves(position, &mut moves);
-
-    moves
+pub fn generate_moves(position: &Position, moves: &mut Vec<Move>) {
+    pawn_moves(position, moves);
+    knight_moves(position, moves);
+    bishop_moves(position, moves);
+    rook_moves(position, moves);
+    queen_moves(position, moves);
+    king_moves(position, moves);
 }
 
 fn pawn_moves(position: &Position, moves: &mut Vec<Move>) {
@@ -248,13 +318,13 @@ fn pawn_moves(position: &Position, moves: &mut Vec<Move>) {
 
 fn insert_pawn_captures(moves: &mut Vec<Move>, mut to_bb: Bitboard, direction: i32) {
     while let Some(to) = to_bb.pop_lsb() {
-        moves.push(Move::new(to, (to - direction).unwrap(), MoveKind::Capture));
+        moves.push(Move::new((to - direction).unwrap(), to, MoveKind::Capture));
     }
 }
 
 fn insert_pawn_moves(moves: &mut Vec<Move>, mut to_bb: Bitboard, direction: i32) {
     while let Some(to) = to_bb.pop_lsb() {
-        moves.push(Move::new(to, (to - direction).unwrap(), MoveKind::Quiet));
+        moves.push(Move::new((to - direction).unwrap(), to, MoveKind::Quiet));
     }
 }
 
@@ -376,13 +446,12 @@ fn insert_moves(
     moves: &mut Vec<Move>,
 ) {
     while let Some(dest) = locations.pop_lsb() {
-        let move_kind = if position.get_piece_at(dest).is_some() {
-            MoveKind::Capture
-        } else {
-            MoveKind::Quiet
+        let dest_occupancy_opt = position.get_piece_at(&dest);
+        if dest_occupancy_opt.is_some_and(|p| p.color() != position.side_to_move()) {
+            moves.push(Move::new(source, dest, MoveKind::Capture));
+        } else if dest_occupancy_opt.is_none() {
+            moves.push(Move::new(source, dest, MoveKind::Quiet));
         };
-
-        moves.push(Move::new(source, dest, move_kind));
     }
 }
 
@@ -410,11 +479,11 @@ fn generate_king_castle(
     }
 }
 
-fn queen_attacks(square: Square, occupied: Bitboard) -> Bitboard {
+pub(crate) fn queen_attacks(square: Square, occupied: Bitboard) -> Bitboard {
     rook_attacks(square, occupied) | bishop_attacks(square, occupied)
 }
 
-fn rook_attacks(square: Square, occupied: Bitboard) -> Bitboard {
+pub(crate) fn rook_attacks(square: Square, occupied: Bitboard) -> Bitboard {
     let file_attacks = get_ray_attacks(square, Direction::North, occupied)
         | get_ray_attacks(square, Direction::South, occupied);
     let rank_attacks = get_ray_attacks(square, Direction::East, occupied)
@@ -423,7 +492,7 @@ fn rook_attacks(square: Square, occupied: Bitboard) -> Bitboard {
     file_attacks | rank_attacks
 }
 
-fn bishop_attacks(square: Square, occupied: Bitboard) -> Bitboard {
+pub(crate) fn bishop_attacks(square: Square, occupied: Bitboard) -> Bitboard {
     let diagonal = get_ray_attacks(square, Direction::NorthEast, occupied)
         | get_ray_attacks(square, Direction::SouthWest, occupied);
     let anti_diagonal = get_ray_attacks(square, Direction::NorthWest, occupied)
@@ -450,13 +519,129 @@ fn get_ray_attacks(square: Square, dir: Direction, occupied: Bitboard) -> Bitboa
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
+    use crate::chess::{Error, State};
+
     use super::*;
 
-    #[test]
-    fn test_start_position() {
-        let p = Position::default();
-        let moves = generate_moves(&p);
+    const START_POSITION: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    const KIWIPETE: &str = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+    const POSITION_3: &str = "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1";
+    const POSITION_4: &str = "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1";
+    const POSITION_5: &str = "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
+    const POSITION_6: &str =
+        "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10 ";
 
-        assert_eq!(20, moves.len());
+    #[test]
+    fn test_start_position_perft() {
+        let result = do_perft(START_POSITION, 6, 119060324);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_kiwipete_perft() {
+        let result = do_perft(KIWIPETE, 5, 193690690);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_position_3_perft() {
+        let result = do_perft(POSITION_3, 7, 178633661);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_position_4_perft() {
+        let result = do_perft(POSITION_4, 5, 15833292);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_position_5_perft() {
+        let result = do_perft(POSITION_5, 5, 89941194);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_position_6_perft() {
+        let result = do_perft(POSITION_6, 5, 164075551);
+
+        assert!(result.is_ok());
+    }
+
+    /// Generates all legal moves for a given position
+    fn generate_legal_moves(position: &mut Position, moves: &mut Vec<Move>) {
+        let mut curr = moves.len();
+        generate_moves(position, moves);
+
+        let mut history = vec![];
+        while curr < moves.len() {
+            let mv = moves[curr];
+            if !position.make_move(mv, &mut history) {
+                moves.swap_remove(curr);
+            } else {
+                curr += 1;
+                position.unmake_move(mv, &mut history);
+            }
+        }
+    }
+
+    /// Perft testing function
+    fn perft(pos: &mut Position, history: &mut Vec<State>, depth: u64) -> u64 {
+        if depth == 0 {
+            return 1;
+        }
+
+        let mut moves = Vec::new();
+        generate_legal_moves(pos, &mut moves);
+        let mut move_count = 0;
+        for mv in moves {
+            if !pos.make_move(mv, history) {
+                panic!("legal move couldn't be made");
+            }
+            move_count += perft(pos, history, depth - 1);
+            pos.unmake_move(mv, history);
+        }
+
+        move_count
+    }
+
+    fn perft_divide(pos: &mut Position, history: &mut Vec<State>, depth: u64) -> u64 {
+        if depth == 0 {
+            return 1;
+        }
+
+        let mut moves = Vec::new();
+        generate_legal_moves(pos, &mut moves);
+
+        let mut move_count = 0;
+        for mv in moves {
+            if !pos.make_move(mv, history) {
+                panic!("legal move couldn't be made");
+            }
+            let subtree_count = perft(pos, history, depth - 1);
+            println!("{}: {}", mv.to_uci_string(), subtree_count);
+            move_count += subtree_count;
+            pos.unmake_move(mv, history);
+        }
+
+        println!("\nNodes searched: {}", move_count);
+        move_count
+    }
+
+    fn do_perft(pos: &str, starting_depth: u64, expected_count: u64) -> Result<(), Error> {
+        let mut position = Position::from_str(pos)?;
+        let mut history = Vec::new();
+        let legal_count = perft_divide(&mut position, &mut history, starting_depth);
+
+        assert_eq!(expected_count, legal_count);
+
+        Ok(())
     }
 }

@@ -1,4 +1,4 @@
-use std::{ops::Not, str::FromStr};
+use std::{fmt::Display, ops::Not, str::FromStr};
 
 use crate::chess::Error;
 
@@ -66,6 +66,21 @@ impl TryFrom<usize> for PieceType {
     }
 }
 
+impl Display for PieceType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let piece_char = match self {
+            PieceType::Pawn => "p",
+            PieceType::Knight => "n",
+            PieceType::Bishop => "b",
+            PieceType::Rook => "r",
+            PieceType::Queen => "q",
+            PieceType::King => "k",
+        };
+
+        write!(f, "{piece_char}")
+    }
+}
+
 impl FromStr for PieceType {
     type Err = Error;
 
@@ -103,6 +118,17 @@ impl Piece {
 
     pub fn piece_type(&self) -> PieceType {
         self.piece_type
+    }
+}
+
+impl Display for Piece {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut piece_str = self.piece_type().to_string();
+        if self.color().is_white() {
+            piece_str = piece_str.to_uppercase();
+        }
+
+        write!(f, "{}", piece_str)
     }
 }
 

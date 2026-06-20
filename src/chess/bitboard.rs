@@ -6,7 +6,7 @@ use std::{
     },
 };
 
-use crate::chess::{File, NUM_BITBOARDS, NUM_PIECES, Piece, Rank, Square};
+use crate::chess::{File, NUM_BITBOARDS, NUM_PIECES, NUM_SQUARES, Piece, Rank, Square};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Direction {
@@ -112,10 +112,10 @@ impl Bitboard {
     }
 
     pub fn msb(&self) -> Option<Square> {
-        if self.0.count_ones() != 1 {
+        if self.0.count_ones() == 0 {
             None
         } else {
-            Square::from_lsf_index(self.0.leading_zeros() as u8).ok()
+            Square::from_lsf_index((NUM_SQUARES as u32 - self.0.leading_zeros() - 1) as u8).ok()
         }
     }
 }
