@@ -600,6 +600,11 @@ mod tests {
 
         let mut moves = Vec::new();
         generate_legal_moves(pos, &mut moves);
+
+        if depth == 1 {
+            return moves.len() as u64;
+        }
+
         let mut move_count = 0;
         for mv in moves {
             if !pos.make_move(mv, history) {
@@ -625,10 +630,14 @@ mod tests {
             if !pos.make_move(mv, history) {
                 panic!("legal move couldn't be made");
             }
-            let subtree_count = perft(pos, history, depth - 1);
-            println!("{}: {}", mv.to_uci_string(), subtree_count);
+            let subtree_count = if depth == 1 {
+                1
+            } else {
+                perft(pos, history, depth - 1)
+            };
             move_count += subtree_count;
             pos.unmake_move(mv, history);
+            println!("{}: {}", mv.to_uci_string(), subtree_count);
         }
 
         println!("\nNodes searched: {}", move_count);
