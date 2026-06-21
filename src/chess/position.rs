@@ -1,76 +1,18 @@
-use std::{
-    fmt::Display,
-    ops::{Index, IndexMut},
-    str::FromStr,
-};
+use std::{fmt::Display, str::FromStr};
 
 use crate::chess::{
-    Bitboard, Color, File, NUM_COLORS, NUM_FILES, NUM_PIECES, NUM_RANKS, Piece, PieceType, Rank,
-    Square,
+    Bitboard, CastlingRights, Color, File, NUM_COLORS, NUM_FILES, NUM_PIECES, NUM_RANKS, Piece,
+    PieceType, Rank, Square,
     error::Error,
     movegen::{Move, MoveKind, attack_mask, bishop_attacks, pawn_attack_mask, rook_attacks},
 };
 
-pub const FEN_RANK_SEPARATOR: char = '/';
 pub const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+pub const FEN_RANK_SEPARATOR: char = '/';
 pub(crate) const NUM_BITBOARDS: usize = NUM_COLORS * NUM_PIECES;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[repr(u8)]
-pub enum CastlingRights {
-    All = 0b11,
-    QueenSide = 0b01,
-    KingSide = 0b10,
-    None = 0b00,
-}
-
-impl CastlingRights {
-    /// Updates castling rights to not include a given set of rights
-    pub fn downgrade(&self, downgrade: CastlingRights) -> CastlingRights {
-        let self_byte = *self as u8;
-        let other_byte = downgrade as u8;
-        if downgrade == CastlingRights::None || self_byte & other_byte == 0 {
-            return *self;
-        }
-
-        let result_byte = self_byte ^ (self_byte & other_byte);
-
-        unsafe { std::mem::transmute(result_byte) }
-    }
-}
-
-impl Index<Color> for [CastlingRights; NUM_COLORS] {
-    type Output = CastlingRights;
-
-    fn index(&self, index: Color) -> &Self::Output {
-        let color_index = index as usize;
-        &self[color_index]
-    }
-}
-
-impl IndexMut<Color> for [CastlingRights; NUM_COLORS] {
-    fn index_mut(&mut self, index: Color) -> &mut Self::Output {
-        let color_index = index as usize;
-        &mut self[color_index]
-    }
-}
-
-impl FromStr for CastlingRights {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "kq" => Ok(Self::All),
-            "q" => Ok(Self::QueenSide),
-            "k" => Ok(Self::KingSide),
-            "" => Ok(Self::None),
-            _ => Err(Error::ParseError),
-        }
-    }
-}
-
 /// State that cannot be recovered by the inverse of a move alone.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct State {
     castling_rights: [CastlingRights; NUM_COLORS],
     en_passant_square: Option<Square>,
@@ -87,7 +29,7 @@ pub struct State {
 /// is not a part of the position itself and is tracked as part of an entire game. Practically
 /// all rules can be applied based on the position alone. The only rule that cannot be applied
 /// from a position is the determination of three fold repititions.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Position {
     bitboards: [Bitboard; NUM_BITBOARDS],
     side_to_move: Color,

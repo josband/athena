@@ -1,6 +1,6 @@
 use std::{
     fmt::Display,
-    ops::{Add, Not, Sub},
+    ops::{Add, Index, IndexMut, Not, Sub},
     str::FromStr,
 };
 
@@ -13,6 +13,7 @@ pub const NUM_COLORS: usize = 2;
 pub const NUM_PIECES: usize = 6;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum File {
     A,
     B,
@@ -127,6 +128,7 @@ impl Iterator for FileIterator {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum Rank {
     One,
     Two,
@@ -431,6 +433,7 @@ impl FromStr for Square {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum Color {
     White,
     Black,
@@ -466,6 +469,7 @@ impl FromStr for Color {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum PieceType {
     Pawn,
     Knight,
@@ -579,6 +583,60 @@ impl FromStr for Piece {
             .ok_or(Error::ParseError)?;
 
         Ok(Self { color, piece_type })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum CastlingRights {
+    All = 0b11,
+    QueenSide = 0b01,
+    KingSide = 0b10,
+    None = 0b00,
+}
+
+impl CastlingRights {
+    /// Updates castling rights to not include a given set of rights
+    pub fn downgrade(&self, downgrade: CastlingRights) -> CastlingRights {
+        let self_byte = *self as u8;
+        let other_byte = downgrade as u8;
+        if downgrade == CastlingRights::None || self_byte & other_byte == 0 {
+            return *self;
+        }
+
+        let result_byte = self_byte ^ (self_byte & other_byte);
+
+        unsafe { std::mem::transmute(result_byte) }
+    }
+}
+
+impl Index<Color> for [CastlingRights; NUM_COLORS] {
+    type Output = CastlingRights;
+
+    fn index(&self, index: Color) -> &Self::Output {
+        let color_index = index as usize;
+        &self[color_index]
+    }
+}
+
+impl IndexMut<Color> for [CastlingRights; NUM_COLORS] {
+    fn index_mut(&mut self, index: Color) -> &mut Self::Output {
+        let color_index = index as usize;
+        &mut self[color_index]
+    }
+}
+
+impl FromStr for CastlingRights {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "kq" => Ok(Self::All),
+            "q" => Ok(Self::QueenSide),
+            "k" => Ok(Self::KingSide),
+            "" => Ok(Self::None),
+            _ => Err(Error::ParseError),
+        }
     }
 }
 
