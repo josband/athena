@@ -6,6 +6,7 @@ use crate::chess::{
 };
 
 const NUM_ADJACENT_SQUARES: usize = 8;
+const MAX_MOVES: usize = 256;
 
 lazy_static! {
     static ref PAWN_ATTACK_MASKS: [[Bitboard; NUM_SQUARES]; NUM_COLORS] = gen_pawn_attack_masks();
@@ -24,6 +25,93 @@ pub fn init_movegen() {
     initialize(&KNIGHT_ATTACK_MASKS);
     initialize(&SLIDING_ATTACK_MASKS);
     initialize(&KING_ATTACK_MASKS);
+}
+
+/// Helper class for storing a list of moves for a particular position
+///
+/// This class contains a list of moves associated with a position. Moves are stored
+/// in a pre-allocated array on the stack to help with performance.
+pub struct MoveList {
+    moves: [Option<Move>; MAX_MOVES],
+    len: usize,
+}
+
+impl MoveList {
+    pub fn new() -> Self {
+        Self {
+            moves: [None; MAX_MOVES],
+            len: 0,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn get(&self, index: usize) -> Option<Move> {
+        if index < self.len() {
+            self.moves[index]
+        } else {
+            None
+        }
+    }
+
+    pub fn push(&mut self, mv: Move) {
+        debug_assert!(self.len() < self.moves.len());
+        self.moves[self.len()] = Some(mv);
+        self.len += 1;
+    }
+
+    pub fn swap_remove(&mut self, index: usize) {
+        debug_assert!(index < self.len);
+        self.moves.swap(index, self.len - 1);
+
+        self.moves[self.len() - 1] = None;
+        self.len -= 1;
+    }
+}
+
+impl Default for MoveList {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl IntoIterator for MoveList {
+    type Item = Move;
+
+    type IntoIter = MoveListIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        MoveListIter {
+            list: self,
+            next: 0,
+        }
+    }
+}
+
+pub struct MoveListIter {
+    list: MoveList,
+    next: usize,
+}
+
+impl Iterator for MoveListIter {
+    type Item = Move;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next < self.list.len() {
+            let result = self.list.moves[self.next].take();
+            self.next += 1;
+            result
+        } else {
+            None
+        }
+    }
 }
 
 pub(crate) fn attack_mask(piece_type: PieceType, square: Square) -> Bitboard {
@@ -236,7 +324,7 @@ impl Move {
 }
 
 /// Generates all pseudo-legal moves for a given position
-pub fn generate_moves(position: &Position, moves: &mut Vec<Move>) {
+pub fn generate_moves(position: &Position, moves: &mut MoveList) {
     pawn_moves(position, moves);
     knight_moves(position, moves);
     bishop_moves(position, moves);
@@ -245,7 +333,7 @@ pub fn generate_moves(position: &Position, moves: &mut Vec<Move>) {
     king_moves(position, moves);
 }
 
-fn pawn_moves(position: &Position, moves: &mut Vec<Move>) {
+fn pawn_moves(position: &Position, moves: &mut MoveList) {
     let side = position.side_to_move();
     let (forward, forward_left, forward_right) = if side.is_white() {
         (Direction::North, Direction::NorthWest, Direction::NorthEast)
@@ -316,25 +404,25 @@ fn pawn_moves(position: &Position, moves: &mut Vec<Move>) {
     insert_promotion(moves, capture_promo_left, forward_left);
 }
 
-fn insert_pawn_captures(moves: &mut Vec<Move>, mut to_bb: Bitboard, direction: i32) {
+fn insert_pawn_captures(moves: &mut MoveList, mut to_bb: Bitboard, direction: i32) {
     while let Some(to) = to_bb.pop_lsb() {
         moves.push(Move::new((to - direction).unwrap(), to, MoveKind::Capture));
     }
 }
 
-fn insert_pawn_moves(moves: &mut Vec<Move>, mut to_bb: Bitboard, direction: i32) {
+fn insert_pawn_moves(moves: &mut MoveList, mut to_bb: Bitboard, direction: i32) {
     while let Some(to) = to_bb.pop_lsb() {
         moves.push(Move::new((to - direction).unwrap(), to, MoveKind::Quiet));
     }
 }
 
-fn insert_promotion(moves: &mut Vec<Move>, mut dest_bb: Bitboard, direction: Direction) {
+fn insert_promotion(moves: &mut MoveList, mut dest_bb: Bitboard, direction: Direction) {
     while let Some(dest) = dest_bb.pop_lsb() {
         make_promotion(moves, (dest - direction as i32).unwrap(), dest);
     }
 }
 
-fn make_promotion(moves: &mut Vec<Move>, source: Square, dest: Square) {
+fn make_promotion(moves: &mut MoveList, source: Square, dest: Square) {
     moves.push(Move::new(
         source,
         dest,
@@ -357,7 +445,7 @@ fn make_promotion(moves: &mut Vec<Move>, source: Square, dest: Square) {
     ));
 }
 
-fn knight_moves(position: &Position, moves: &mut Vec<Move>) {
+fn knight_moves(position: &Position, moves: &mut MoveList) {
     let blockers = position.color_pieces(position.side_to_move());
     let mut knights = position.piece(Piece::new(position.side_to_move(), PieceType::Knight));
     while let Some(source) = knights.pop_lsb() {
@@ -366,7 +454,7 @@ fn knight_moves(position: &Position, moves: &mut Vec<Move>) {
     }
 }
 
-fn bishop_moves(position: &Position, moves: &mut Vec<Move>) {
+fn bishop_moves(position: &Position, moves: &mut MoveList) {
     let to_move = position.side_to_move();
     let occupied = position.occupied();
     let friendly = position.color_pieces(to_move);
@@ -378,7 +466,7 @@ fn bishop_moves(position: &Position, moves: &mut Vec<Move>) {
     }
 }
 
-fn rook_moves(position: &Position, moves: &mut Vec<Move>) {
+fn rook_moves(position: &Position, moves: &mut MoveList) {
     let to_move = position.side_to_move();
     let occupied = position.occupied();
     let friendly = position.color_pieces(to_move);
@@ -390,7 +478,7 @@ fn rook_moves(position: &Position, moves: &mut Vec<Move>) {
     }
 }
 
-fn queen_moves(position: &Position, moves: &mut Vec<Move>) {
+fn queen_moves(position: &Position, moves: &mut MoveList) {
     let to_move = position.side_to_move();
     let occupied = position.occupied();
     let friendly = position.color_pieces(to_move);
@@ -402,7 +490,7 @@ fn queen_moves(position: &Position, moves: &mut Vec<Move>) {
     }
 }
 
-fn king_moves(position: &Position, moves: &mut Vec<Move>) {
+fn king_moves(position: &Position, moves: &mut MoveList) {
     let to_move = position.side_to_move();
     let castle_mask_shift_value = if to_move.is_white() { 0 } else { 56 };
     let queen_castle_mask = Bitboard(0xe << castle_mask_shift_value);
@@ -443,7 +531,7 @@ fn insert_moves(
     position: &Position,
     source: Square,
     mut locations: Bitboard,
-    moves: &mut Vec<Move>,
+    moves: &mut MoveList,
 ) {
     while let Some(dest) = locations.pop_lsb() {
         let dest_occupancy_opt = position.get_piece_at(&dest);
@@ -459,7 +547,7 @@ fn generate_queen_castle(
     king_square: Square,
     open_castle_bb: Bitboard,
     castle_mask: Bitboard,
-    moves: &mut Vec<Move>,
+    moves: &mut MoveList,
 ) {
     if open_castle_bb & castle_mask == castle_mask {
         let castle_square = Square::new(king_square.file().left_n(2).unwrap(), king_square.rank());
@@ -471,7 +559,7 @@ fn generate_king_castle(
     king_square: Square,
     open_castle_bb: Bitboard,
     castle_mask: Bitboard,
-    moves: &mut Vec<Move>,
+    moves: &mut MoveList,
 ) {
     if open_castle_bb & castle_mask == castle_mask {
         let castle_square = Square::new(king_square.file().right_n(2).unwrap(), king_square.rank());
@@ -576,13 +664,13 @@ mod tests {
     }
 
     /// Generates all legal moves for a given position
-    fn generate_legal_moves(position: &mut Position, moves: &mut Vec<Move>) {
+    fn generate_legal_moves(position: &mut Position, moves: &mut MoveList) {
         let mut curr = moves.len();
         generate_moves(position, moves);
 
         let mut history = vec![];
         while curr < moves.len() {
-            let mv = moves[curr];
+            let mv = moves.get(curr).expect("move does not exist");
             if !position.make_move(mv, &mut history) {
                 moves.swap_remove(curr);
             } else {
@@ -598,7 +686,7 @@ mod tests {
             return 1;
         }
 
-        let mut moves = Vec::new();
+        let mut moves = MoveList::new();
         generate_legal_moves(pos, &mut moves);
 
         if depth == 1 {
@@ -622,7 +710,7 @@ mod tests {
             return 1;
         }
 
-        let mut moves = Vec::new();
+        let mut moves = MoveList::new();
         generate_legal_moves(pos, &mut moves);
 
         let mut move_count = 0;
