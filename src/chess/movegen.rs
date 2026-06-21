@@ -622,6 +622,7 @@ mod tests {
         "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10 ";
 
     #[test]
+    #[cfg_attr(debug_assertions, ignore = "only enabled for '--release'")]
     fn test_start_position_perft() {
         let result = do_perft(START_POSITION, 6, 119060324);
 
@@ -629,6 +630,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(debug_assertions, ignore = "only enabled for '--release'")]
     fn test_kiwipete_perft() {
         let result = do_perft(KIWIPETE, 5, 193690690);
 
@@ -636,6 +638,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(debug_assertions, ignore = "only enabled for '--release'")]
     fn test_position_3_perft() {
         let result = do_perft(POSITION_3, 7, 178633661);
 
@@ -643,6 +646,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(debug_assertions, ignore = "only enabled for '--release'")]
     fn test_position_4_perft() {
         let result = do_perft(POSITION_4, 5, 15833292);
 
@@ -650,6 +654,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(debug_assertions, ignore = "only enabled for '--release'")]
     fn test_position_5_perft() {
         let result = do_perft(POSITION_5, 5, 89941194);
 
@@ -657,6 +662,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(debug_assertions, ignore = "only enabled for '--release'")]
     fn test_position_6_perft() {
         let result = do_perft(POSITION_6, 5, 164075551);
 
