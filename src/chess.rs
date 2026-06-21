@@ -1,6 +1,7 @@
 mod bitboard;
 mod board;
 mod error;
+pub mod movegen;
 mod piece;
 mod position;
 

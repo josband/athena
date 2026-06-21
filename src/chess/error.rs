@@ -6,4 +6,6 @@ pub enum Error {
     InvalidFen,
     #[error("Parse error")]
     ParseError,
+    #[error("Invalid Index")]
+    InvalidIndex,
 }

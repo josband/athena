@@ -1,6 +1,10 @@
-use std::str::FromStr;
+use std::{
+    fmt::Display,
+    ops::{Add, Sub},
+    str::FromStr,
+};
 
-use crate::chess::Error;
+use crate::chess::{Bitboard, Error};
 
 pub const NUM_RANKS: usize = 8;
 pub const NUM_FILES: usize = 8;
@@ -40,8 +44,25 @@ impl FromStr for File {
     }
 }
 
+impl Display for File {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let c = match self {
+            File::A => 'a',
+            File::B => 'b',
+            File::C => 'c',
+            File::D => 'd',
+            File::E => 'e',
+            File::F => 'f',
+            File::G => 'g',
+            File::H => 'h',
+        };
+
+        write!(f, "{c}")
+    }
+}
+
 impl File {
-    pub fn increment(&self, count: u8) -> Option<Self> {
+    pub fn right_n(&self, count: u8) -> Option<Self> {
         let index = (*self as u8) + count;
         if index >= 8 {
             None
@@ -50,7 +71,7 @@ impl File {
         }
     }
 
-    pub fn decrement(&self, count: u8) -> Option<Self> {
+    pub fn left_n(&self, count: u8) -> Option<Self> {
         let index = (*self as i8) - count as i8;
         if index < 0 {
             None
@@ -72,6 +93,35 @@ impl File {
             _ => Err(Error::ParseError),
         }
     }
+
+    pub(crate) fn values() -> FileIterator {
+        FileIterator::new()
+    }
+}
+
+pub struct FileIterator {
+    next: Option<File>,
+}
+
+impl FileIterator {
+    fn new() -> Self {
+        FileIterator {
+            next: Some(File::A),
+        }
+    }
+}
+
+impl Iterator for FileIterator {
+    type Item = File;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let val = self.next.take();
+        if let Some(file) = val {
+            self.next = file.right_n(1);
+        }
+
+        val
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -86,8 +136,25 @@ pub enum Rank {
     Eight,
 }
 
+impl Display for Rank {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let c = match self {
+            Rank::One => '1',
+            Rank::Two => '2',
+            Rank::Three => '3',
+            Rank::Four => '4',
+            Rank::Five => '5',
+            Rank::Six => '6',
+            Rank::Seven => '7',
+            Rank::Eight => '8',
+        };
+
+        write!(f, "{c}")
+    }
+}
+
 impl Rank {
-    pub fn increment(&self, count: u8) -> Option<Self> {
+    pub fn up_n(&self, count: u8) -> Option<Self> {
         let index = (*self as u8) + count;
         if index >= 8 {
             None
@@ -96,13 +163,17 @@ impl Rank {
         }
     }
 
-    pub fn decrement(&self, count: u8) -> Option<Self> {
+    pub fn down_n(&self, count: u8) -> Option<Self> {
         let index = (*self as i8) - count as i8;
         if index < 0 {
             None
         } else {
             Some(Self::from_index(index as usize).unwrap())
         }
+    }
+
+    pub fn distance(&self, other: &Self) -> i8 {
+        *self as i8 - *other as i8
     }
 
     fn from_index(index: usize) -> Result<Self, Error> {
@@ -117,6 +188,48 @@ impl Rank {
             7 => Ok(Self::Eight),
             _ => Err(Error::ParseError),
         }
+    }
+
+    pub fn values() -> RankIterator {
+        RankIterator::new(Rank::One)
+    }
+
+    pub fn values_from(start: Rank) -> RankIterator {
+        RankIterator::new(start)
+    }
+}
+
+pub struct RankIterator {
+    next: Option<Rank>,
+}
+
+impl RankIterator {
+    fn new(start: Rank) -> Self {
+        Self { next: Some(start) }
+    }
+}
+
+impl Iterator for RankIterator {
+    type Item = Rank;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let curr_rank_opt = self.next.take();
+        if let Some(curr_rank) = curr_rank_opt {
+            self.next = curr_rank.up_n(1);
+        }
+
+        curr_rank_opt
+    }
+}
+
+impl DoubleEndedIterator for RankIterator {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let curr_rank_opt = self.next.take();
+        if let Some(curr_rank) = curr_rank_opt {
+            self.next = curr_rank.down_n(1);
+        }
+
+        curr_rank_opt
     }
 }
 
@@ -142,8 +255,34 @@ impl FromStr for Rank {
     }
 }
 
+pub struct SquaresIter {
+    rank: Option<Rank>,
+    file: Option<File>,
+}
+
+impl Iterator for SquaresIter {
+    type Item = Square;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match (self.rank, self.file) {
+            (Some(r), Some(f)) => {
+                let s = Square::new(f, r);
+                self.file = f.right_n(1);
+                if self.file.is_none() {
+                    self.rank = r.up_n(1);
+                    self.file = Some(File::A);
+                }
+
+                Some(s)
+            }
+            _ => None,
+        }
+    }
+}
+
 #[rustfmt::skip]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum Square {
     A1, B1, C1, D1, E1, F1, G1, H1,
     A2, B2, C2, D2, E2, F2, G2, H2,
@@ -163,7 +302,7 @@ impl Square {
     }
 
     pub fn rank(&self) -> Rank {
-        let index = (*self as u8) >> 3;
+        let index = self.lsf_index() >> 3;
         match index {
             0 => Rank::One,
             1 => Rank::Two,
@@ -178,7 +317,7 @@ impl Square {
     }
 
     pub fn file(&self) -> File {
-        let index = (*self as u8) & 0b111;
+        let index = self.lsf_index() & 0b111;
         match index {
             0 => File::A,
             1 => File::B,
@@ -190,6 +329,86 @@ impl Square {
             7 => File::H,
             _ => unreachable!(),
         }
+    }
+
+    pub fn north(&self) -> Option<Self> {
+        if let Rank::Eight = self.rank() {
+            return None;
+        }
+
+        Some(Self::new(self.file(), self.rank().up_n(1).unwrap()))
+    }
+
+    pub fn south(&self) -> Option<Self> {
+        if let Rank::One = self.rank() {
+            return None;
+        }
+
+        Some(Self::new(self.file(), self.rank().down_n(1).unwrap()))
+    }
+
+    pub fn east(&self) -> Option<Self> {
+        if let File::H = self.file() {
+            return None;
+        }
+
+        Some(Self::new(self.file().right_n(1).unwrap(), self.rank()))
+    }
+
+    pub fn west(&self) -> Option<Self> {
+        if let File::A = self.file() {
+            return None;
+        }
+
+        Some(Self::new(self.file().left_n(1).unwrap(), self.rank()))
+    }
+
+    /// Returns the index of the square using Least Significant File indexing.
+    pub fn lsf_index(&self) -> usize {
+        *self as usize
+    }
+
+    pub fn from_lsf_index(index: u8) -> Result<Self, Error> {
+        if index > 63 {
+            Err(Error::InvalidIndex)
+        } else {
+            let s = unsafe { std::mem::transmute::<u8, Self>(index) };
+            Ok(s)
+        }
+    }
+
+    pub fn values() -> SquaresIter {
+        SquaresIter {
+            rank: Some(Rank::One),
+            file: Some(File::A),
+        }
+    }
+}
+
+impl Display for Square {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}{}", self.file(), self.rank())
+    }
+}
+
+impl Sub<i32> for Square {
+    type Output = Option<Self>;
+
+    fn sub(self, rhs: i32) -> Self::Output {
+        self + -rhs
+    }
+}
+
+impl Add<i32> for Square {
+    type Output = Option<Self>;
+
+    fn add(self, rhs: i32) -> Self::Output {
+        if rhs.is_negative() {
+            Bitboard::from(self) >> (-rhs as u64)
+        } else {
+            Bitboard::from(self) << (rhs as u64)
+        }
+        .pop_lsb()
     }
 }
 
@@ -246,20 +465,20 @@ mod tests {
     #[test]
     fn test_rank_increment() {
         let rank = Rank::Four;
-        let next_rank = rank.increment(2);
+        let next_rank = rank.up_n(2);
         assert_eq!(next_rank, Some(Rank::Six));
 
-        let next_rank = rank.increment(5);
+        let next_rank = rank.up_n(5);
         assert_eq!(next_rank, None);
     }
 
     #[test]
     fn test_rank_decrement() {
         let rank = Rank::Four;
-        let next_rank = rank.decrement(2);
+        let next_rank = rank.down_n(2);
         assert_eq!(next_rank, Some(Rank::Two));
 
-        let next_rank = rank.decrement(5);
+        let next_rank = rank.down_n(5);
         assert_eq!(next_rank, None);
     }
 
@@ -272,20 +491,20 @@ mod tests {
     #[test]
     fn test_file_increment() {
         let file = File::E;
-        let next_file = file.increment(2);
+        let next_file = file.right_n(2);
         assert_eq!(next_file, Some(File::G));
 
-        let next_file = file.increment(5);
+        let next_file = file.right_n(5);
         assert_eq!(next_file, None);
     }
 
     #[test]
     fn test_file_decrement() {
         let file = File::E;
-        let next_file = file.decrement(2);
+        let next_file = file.left_n(2);
         assert_eq!(next_file, Some(File::C));
 
-        let next_file = file.decrement(5);
+        let next_file = file.left_n(5);
         assert_eq!(next_file, None);
     }
 }
