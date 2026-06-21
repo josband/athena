@@ -1,12 +1,10 @@
 mod bitboard;
-mod board;
+mod core;
 mod error;
 pub mod movegen;
-mod piece;
 mod position;
 
 pub use bitboard::*;
-pub use board::*;
+pub use core::*;
 pub use error::*;
-pub use piece::*;
 pub use position::*;
