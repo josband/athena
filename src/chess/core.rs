@@ -441,7 +441,7 @@ pub enum Color {
 
 impl Color {
     pub fn is_white(&self) -> bool {
-        self == &Self::White
+        *self == Self::White
     }
 }
 
@@ -537,7 +537,21 @@ pub struct Piece {
 }
 
 impl Piece {
-    pub fn new(color: Color, piece_type: PieceType) -> Self {
+    pub const WHITE_KING: Piece = Piece::new(Color::White, PieceType::King);
+    pub const WHITE_QUEEN: Piece = Piece::new(Color::White, PieceType::Queen);
+    pub const WHITE_ROOK: Piece = Piece::new(Color::White, PieceType::Rook);
+    pub const WHITE_BISHOP: Piece = Piece::new(Color::White, PieceType::Bishop);
+    pub const WHITE_KNIGHT: Piece = Piece::new(Color::White, PieceType::Knight);
+    pub const WHITE_PAWN: Piece = Piece::new(Color::White, PieceType::Pawn);
+
+    pub const BLACK_KING: Piece = Piece::new(Color::Black, PieceType::King);
+    pub const BLACK_QUEEN: Piece = Piece::new(Color::Black, PieceType::Queen);
+    pub const BLACK_ROOK: Piece = Piece::new(Color::Black, PieceType::Rook);
+    pub const BLACK_BISHOP: Piece = Piece::new(Color::Black, PieceType::Bishop);
+    pub const BLACK_KNIGHT: Piece = Piece::new(Color::Black, PieceType::Knight);
+    pub const BLACK_PAWN: Piece = Piece::new(Color::Black, PieceType::Pawn);
+
+    pub const fn new(color: Color, piece_type: PieceType) -> Self {
         Self { color, piece_type }
     }
 

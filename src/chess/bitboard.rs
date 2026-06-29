@@ -58,6 +58,10 @@ pub struct Bitboard(pub(crate) u64);
 impl Bitboard {
     pub const EMPTY: Self = Self(0);
 
+    pub fn pop_count(&self) -> i32 {
+        self.0.count_ones() as i32
+    }
+
     pub fn shift(self, direction: Direction) -> Self {
         self.shift_n(direction, 1)
     }

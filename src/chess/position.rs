@@ -100,6 +100,10 @@ impl Position {
         self.bitboards[piece]
     }
 
+    pub fn piece_count(&self, piece: Piece) -> i32 {
+        self.piece(piece).pop_count()
+    }
+
     pub fn has_en_passant(&self) -> bool {
         self.en_passant_square.is_some()
     }
