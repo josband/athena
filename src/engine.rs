@@ -7,7 +7,10 @@
 pub mod core;
 
 use crate::{
-    chess::{Piece, Position, State, movegen::MoveList},
+    chess::{
+        Piece, Position, State,
+        movegen::{Move, MoveList},
+    },
     engine::core::{
         BISHOP_VALUE, Evaluation, KING_VALUE, KNIGHT_VALUE, PAWN_VALUE, QUEEN_VALUE, ROOK_VALUE,
     },
@@ -30,7 +33,7 @@ pub trait Engine {
     ///
     /// Positive evaluations indicate an advantage for white while
     /// noegative evaluations indicate an advantage for black.
-    fn search(&mut self, ply: u8) -> Evaluation;
+    fn search(&mut self, ply: u32) -> Evaluation;
 
     /// Evaluates the current position.
     fn eval(&self) -> Evaluation;
@@ -49,10 +52,32 @@ impl Athena {
             state_history: vec![],
         }
     }
+
+    pub fn negamax_root(&mut self, ply: u32) -> Option<Move> {
+        if ply == 0 {
+            return None;
+        }
+
+        let mut best_eval = Evaluation::MIN;
+        let mut best_move = None;
+        for mv in MoveList::generate_for(&self.pos, false) {
+            if self.pos.make_move(mv, &mut self.state_history) {
+                let eval = -self.search(ply - 1);
+                if best_eval < eval {
+                    best_eval = best_eval.max(eval);
+                    best_move = Some(mv);
+                }
+
+                self.pos.unmake_move(mv, &mut self.state_history);
+            }
+        }
+
+        best_move
+    }
 }
 
 impl Engine for Athena {
-    fn search(&mut self, ply: u8) -> Evaluation {
+    fn search(&mut self, ply: u32) -> Evaluation {
         if ply == 0 {
             return self.eval();
         }

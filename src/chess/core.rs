@@ -1,6 +1,7 @@
 use std::{
     fmt::Display,
     ops::{Add, Index, IndexMut, Not, Sub},
+    slice::{Iter, IterMut},
     str::FromStr,
 };
 
@@ -11,6 +12,76 @@ pub const NUM_FILES: usize = 8;
 pub const NUM_SQUARES: usize = NUM_RANKS * NUM_FILES;
 pub const NUM_COLORS: usize = 2;
 pub const NUM_PIECES: usize = 6;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PerColor<T>([T; NUM_COLORS]);
+
+impl<T> Index<Color> for PerColor<T> {
+    type Output = T;
+
+    fn index(&self, index: Color) -> &Self::Output {
+        let color_index = index as usize;
+        &self.0[color_index]
+    }
+}
+
+impl<T> IndexMut<Color> for PerColor<T> {
+    fn index_mut(&mut self, index: Color) -> &mut Self::Output {
+        let color_index = index as usize;
+        &mut self.0[color_index]
+    }
+}
+
+impl<T: Copy> PerColor<T> {
+    pub fn new(value: T) -> Self {
+        Self([value; NUM_COLORS])
+    }
+}
+
+impl<T> PerColor<T> {
+    pub fn iter(&self) -> Iter<'_, T> {
+        self.0.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> IterMut<'_, T> {
+        self.0.iter_mut()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PerPieceType<T>([T; NUM_PIECES]);
+
+impl<T> Index<PieceType> for PerPieceType<T> {
+    type Output = T;
+
+    fn index(&self, index: PieceType) -> &Self::Output {
+        let piece_index = index as usize;
+        &self.0[piece_index]
+    }
+}
+
+impl<T> IndexMut<PieceType> for PerPieceType<T> {
+    fn index_mut(&mut self, index: PieceType) -> &mut Self::Output {
+        let piece_index = index as usize;
+        &mut self.0[piece_index]
+    }
+}
+
+impl<T: Copy> PerPieceType<T> {
+    pub fn new(value: T) -> Self {
+        Self([value; NUM_PIECES])
+    }
+}
+
+impl<T> PerPieceType<T> {
+    pub fn iter(&self) -> Iter<'_, T> {
+        self.0.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> IterMut<'_, T> {
+        self.0.iter_mut()
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
@@ -621,22 +692,6 @@ impl CastlingRights {
         let result_byte = self_byte ^ (self_byte & other_byte);
 
         unsafe { std::mem::transmute(result_byte) }
-    }
-}
-
-impl Index<Color> for [CastlingRights; NUM_COLORS] {
-    type Output = CastlingRights;
-
-    fn index(&self, index: Color) -> &Self::Output {
-        let color_index = index as usize;
-        &self[color_index]
-    }
-}
-
-impl IndexMut<Color> for [CastlingRights; NUM_COLORS] {
-    fn index_mut(&mut self, index: Color) -> &mut Self::Output {
-        let color_index = index as usize;
-        &mut self[color_index]
     }
 }
 
