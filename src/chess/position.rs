@@ -14,7 +14,7 @@ pub(crate) const NUM_BITBOARDS: usize = NUM_COLORS * NUM_PIECES;
 type PerPiece<T> = PerColor<PerPieceType<T>>;
 
 /// State that cannot be recovered by the inverse of a move alone.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct State {
     castling_rights: PerColor<CastlingRights>,
     en_passant_square: Option<Square>,
@@ -31,7 +31,7 @@ pub struct State {
 /// is not a part of the position itself and is tracked as part of an entire game. Practically
 /// all rules can be applied based on the position alone. The only rule that cannot be applied
 /// from a position is the determination of three fold repititions.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Position {
     bitboards: PerPiece<Bitboard>,
     side_to_move: Color,
@@ -55,7 +55,7 @@ impl Display for Position {
         for rank in Rank::values_from(Rank::Eight).rev() {
             for file in File::values() {
                 let piece_str = self
-                    .get_piece_at(&Square::new(file, rank))
+                    .piece_at(&Square::new(file, rank))
                     .map(|x| x.to_string())
                     .unwrap_or_else(|| " ".to_string());
 
@@ -125,7 +125,7 @@ impl Position {
             .fold(Bitboard::EMPTY, |acc, bb| acc | *bb)
     }
 
-    pub fn get_piece_at(&self, square: &Square) -> Option<Piece> {
+    pub fn piece_at(&self, square: &Square) -> Option<Piece> {
         for color in [Color::White, Color::Black] {
             for (i, bb) in self.bitboards[color].iter().enumerate() {
                 if *bb & Bitboard::from(*square) != Bitboard::EMPTY {
@@ -150,8 +150,8 @@ impl Position {
         let from = mv.from_sq();
         let to = mv.to_sq();
         let kind = mv.kind();
-        let moved_piece = self.get_piece_at(&from).expect("no piece at from square");
-        let captured_piece = self.get_piece_at(&to);
+        let moved_piece = self.piece_at(&from).expect("no piece at from square");
+        let captured_piece = self.piece_at(&to);
 
         debug_assert_eq!(
             moved_piece.color(),
@@ -310,9 +310,7 @@ impl Position {
         let us = !them;
         let from = mv.to_sq();
         let to = mv.from_sq();
-        let moved_piece = self
-            .get_piece_at(&from)
-            .expect("no piece at moved location");
+        let moved_piece = self.piece_at(&from).expect("no piece at moved location");
 
         // Move piece back to original square
         let moved_piece_bb = self.piece_mut(moved_piece);

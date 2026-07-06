@@ -561,7 +561,7 @@ fn insert_moves(
     moves: &mut MoveList,
 ) {
     while let Some(dest) = locations.pop_lsb() {
-        let dest_occupancy_opt = position.get_piece_at(&dest);
+        let dest_occupancy_opt = position.piece_at(&dest);
         if dest_occupancy_opt.is_some_and(|p| p.color() != position.side_to_move()) {
             moves.push(Move::new(source, dest, MoveKind::Capture));
         } else if dest_occupancy_opt.is_none() {
