@@ -6,15 +6,19 @@
 
 pub mod core;
 
+use std::time::{Duration, Instant};
+
 use crate::{
     chess::{
-        Piece, Position, State,
+        Color, PerColor, Piece, Position, State,
         movegen::{Move, MoveList},
     },
     engine::core::{
         BISHOP_VALUE, Evaluation, KING_VALUE, KNIGHT_VALUE, PAWN_VALUE, QUEEN_VALUE, ROOK_VALUE,
     },
 };
+
+const MAX_DEPTH: u32 = 64;
 
 /// Core chess engine logic.
 ///
@@ -26,6 +30,7 @@ pub trait Engine {
     /// # Arguments
     ///
     /// * `ply` - The number of half-moves to search
+    /// * `deadline` - The time at which the search should be aborted
     ///
     /// # Returns
     ///
@@ -33,16 +38,23 @@ pub trait Engine {
     ///
     /// Positive evaluations indicate an advantage for white while
     /// noegative evaluations indicate an advantage for black.
-    fn search(&mut self, ply: u32) -> Evaluation;
+    fn search(&mut self, ply: u32, deadline: Instant) -> Evaluation;
 
     /// Evaluates the current position.
     fn eval(&self) -> Evaluation;
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct TimeControls {
+    time: Duration,
+    increment: Duration,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Athena {
     pos: Position,
     state_history: Vec<State>,
+    time_controls: PerColor<TimeControls>,
 }
 
 impl Athena {
@@ -50,10 +62,46 @@ impl Athena {
         Self {
             pos,
             state_history: vec![],
+            time_controls: PerColor::new(TimeControls {
+                time: Duration::MAX,
+                increment: Duration::ZERO,
+            }),
         }
     }
 
-    pub fn negamax_root(&mut self, ply: u32) -> Option<Move> {
+    pub fn set_white_time(&mut self, time: Duration) {
+        self.time_controls[Color::White].time = time;
+    }
+
+    pub fn set_white_increment(&mut self, inc: Duration) {
+        self.time_controls[Color::White].increment = inc;
+    }
+
+    pub fn set_black_time(&mut self, time: Duration) {
+        self.time_controls[Color::Black].time = time;
+    }
+
+    pub fn set_black_increment(&mut self, inc: Duration) {
+        self.time_controls[Color::Black].increment = inc;
+    }
+
+    pub fn best_move(&mut self) -> Option<Move> {
+        let mut best = None;
+        let us = self.pos.side_to_move();
+        let max_search = self.time_controls[us].time / 20 + self.time_controls[us].increment / 2;
+        let deadline = Instant::now() + max_search;
+        for depth in 1..MAX_DEPTH {
+            best = self.negamax_root(depth, deadline);
+
+            if Instant::now() >= deadline {
+                break;
+            }
+        }
+
+        best
+    }
+
+    fn negamax_root(&mut self, ply: u32, deadline: Instant) -> Option<Move> {
         if ply == 0 {
             return None;
         }
@@ -62,13 +110,17 @@ impl Athena {
         let mut best_move = None;
         for mv in MoveList::generate_for(&self.pos, false) {
             if self.pos.make_move(mv, &mut self.state_history) {
-                let eval = -self.search(ply - 1);
+                let eval = -self.search(ply - 1, deadline);
                 if best_eval < eval {
                     best_eval = best_eval.max(eval);
                     best_move = Some(mv);
                 }
 
                 self.pos.unmake_move(mv, &mut self.state_history);
+            }
+
+            if Instant::now() >= deadline {
+                break;
             }
         }
 
@@ -77,7 +129,7 @@ impl Athena {
 }
 
 impl Engine for Athena {
-    fn search(&mut self, ply: u32) -> Evaluation {
+    fn search(&mut self, ply: u32, deadline: Instant) -> Evaluation {
         if ply == 0 {
             return self.eval();
         }
@@ -85,9 +137,13 @@ impl Engine for Athena {
         let mut best = Evaluation::MIN;
         for mv in MoveList::generate_for(&self.pos, false) {
             if self.pos.make_move(mv, &mut self.state_history) {
-                let eval = -self.search(ply - 1);
+                let eval = -self.search(ply - 1, deadline);
                 best = best.max(eval);
                 self.pos.unmake_move(mv, &mut self.state_history);
+            }
+
+            if Instant::now() >= deadline {
+                break;
             }
         }
 
