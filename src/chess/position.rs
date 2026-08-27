@@ -78,7 +78,7 @@ impl Display for Position {
             writeln!(f, "{}", RANK_DIVIDER)?;
         }
 
-        writeln!(f, "{}", FILE_LABEL_TEMPLATE)
+        write!(f, "{}", FILE_LABEL_TEMPLATE)
     }
 }
 

@@ -344,7 +344,7 @@ pub fn generate_moves(position: &Position, moves: &mut MoveList) {
     king_moves(position, moves);
 }
 
-fn generate_legal_moves(position: &mut Position, moves: &mut MoveList) {
+pub fn generate_legal_moves(position: &mut Position, moves: &mut MoveList) {
     let mut curr = moves.len();
     generate_moves(position, moves);
 

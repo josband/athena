@@ -7,6 +7,7 @@ alias b := build
 alias br := build-release
 alias t := test
 alias tf := test-full
+alias p := profile
 
 default: lint check test
 
@@ -33,3 +34,7 @@ build:
 # Compiles Athena to a release binary
 build-release:
     cargo build --release
+
+# Generates a flamegraph for athena on release mode (sudo required)
+profile:
+    sudo cmd /c "set CARGO_PROFILE_RELEASE_DEBUG=true&& cargo flamegraph --release"

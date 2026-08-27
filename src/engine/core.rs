@@ -1,119 +1,97 @@
-use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
+};
 
-pub const PAWN_VALUE: Evaluation = Evaluation(100);
-pub const KNIGHT_VALUE: Evaluation = Evaluation(300);
-pub const BISHOP_VALUE: Evaluation = Evaluation(300);
-pub const ROOK_VALUE: Evaluation = Evaluation(500);
-pub const QUEEN_VALUE: Evaluation = Evaluation(1000);
-pub const KING_VALUE: Evaluation = Evaluation(10000);
+use uci_parser::{UciInfo, UciSearchOptions};
 
-/// Evaluation of a chess position.
+use crate::{
+    chess::{Position, movegen::Move},
+    engine::search::Searcher,
+};
+
+pub(crate) const MAX_DEPTH: u32 = 64;
+
+/// Athena Chess Engine
 ///
-/// The sign of the value can be with respect to the side to move
-/// in a position, or it can be based on a fixed size where white
-/// is positive and black is negative. '1' represents 1/100th of
-/// a pawn (called a centipawn).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct Evaluation(i32);
-
-impl Evaluation {
-    pub const MAX: Evaluation = Evaluation(i32::MAX);
-    pub const MIN: Evaluation = Evaluation(i32::MIN);
-    pub const EQUAL: Evaluation = Evaluation(0);
-
-    pub fn new(val: i32) -> Self {
-        Self(val)
-    }
+/// This is the core of the Athena engine.
+#[derive(Debug, Clone)]
+pub struct Athena<T: Searcher> {
+    stop: Arc<AtomicBool>,
+    searcher: T,
 }
 
-impl Neg for Evaluation {
-    type Output = Self;
-
-    fn neg(self) -> Self::Output {
-        Self(-self.0)
+impl<T: Searcher> Athena<T> {
+    /// Initializes Athena from a new position
+    pub fn new(stop: Arc<AtomicBool>, searcher: T) -> Self {
+        Self { stop, searcher }
     }
-}
 
-impl Add for Evaluation {
-    type Output = Self;
+    /// Starts the search for a best move
+    pub fn go(&mut self, pos: Position, limits: UciSearchOptions) -> Option<Move> {
+        self.stop.store(false, Ordering::SeqCst);
 
-    fn add(self, rhs: Self) -> Self::Output {
-        Self(self.0 + rhs.0)
+        let depth = self.max_depth(&limits);
+        let deadline = self.deadline(&pos, &limits);
+
+        let best = self.iterative_deepening(pos, depth, deadline);
+
+        self.stop.store(false, Ordering::SeqCst);
+
+        best
     }
-}
 
-impl AddAssign for Evaluation {
-    fn add_assign(&mut self, rhs: Self) {
-        self.0 += rhs.0;
+    /// Iterative deepening search for best move.
+    ///
+    /// Iterative deepening is a search strategy that repeatedly applies a depth-limited search
+    /// with increasing depth limits until a max depth is hit or a time limit is reached. This
+    /// allows an engine to incrementally improve its best move as the depth increases. Information
+    /// from shallower searches can be used to improve the efficiency of deeper searches.
+    fn iterative_deepening(
+        &mut self,
+        mut pos: Position,
+        depth: u32,
+        deadline: Instant,
+    ) -> Option<Move> {
+        if depth == 0 {
+            return None;
+        }
+
+        let mut best = None;
+        for depth in 1..depth + 1 {
+            best = self.searcher.best_move(&mut pos, depth, deadline);
+            let info = UciInfo::new().depth(depth);
+            println!("{}", info);
+            // if Instant::now() >= deadline || self.stop.load(Ordering::SeqCst) {
+            //     break;
+            // }
+        }
+
+        best
     }
-}
 
-impl Sub for Evaluation {
-    type Output = Self;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        Self(self.0 - rhs.0)
+    fn max_depth(&self, limits: &UciSearchOptions) -> u32 {
+        limits.depth.filter(|d| *d != 0).unwrap_or(MAX_DEPTH)
     }
-}
 
-impl SubAssign for Evaluation {
-    fn sub_assign(&mut self, rhs: Self) {
-        self.0 -= rhs.0;
-    }
-}
+    fn deadline(&self, pos: &Position, limits: &UciSearchOptions) -> Instant {
+        let us = pos.side_to_move();
+        let time = if us.is_white() {
+            limits.wtime
+        } else {
+            limits.btime
+        };
 
-impl Mul for Evaluation {
-    type Output = Self;
+        let inc = if us.is_white() {
+            limits.winc
+        } else {
+            limits.binc
+        };
 
-    fn mul(self, rhs: Self) -> Self::Output {
-        Self(self.0 * rhs.0)
-    }
-}
-
-impl MulAssign for Evaluation {
-    fn mul_assign(&mut self, rhs: Self) {
-        self.0 *= rhs.0
-    }
-}
-
-impl Mul<i32> for Evaluation {
-    type Output = Self;
-
-    fn mul(self, rhs: i32) -> Self::Output {
-        Self(self.0 * rhs)
-    }
-}
-
-impl MulAssign<i32> for Evaluation {
-    fn mul_assign(&mut self, rhs: i32) {
-        self.0 *= rhs
-    }
-}
-
-impl Div for Evaluation {
-    type Output = Self;
-
-    fn div(self, rhs: Self) -> Self::Output {
-        Self(self.0 / rhs.0)
-    }
-}
-
-impl DivAssign for Evaluation {
-    fn div_assign(&mut self, rhs: Self) {
-        self.0 /= rhs.0
-    }
-}
-
-impl Div<i32> for Evaluation {
-    type Output = Self;
-
-    fn div(self, rhs: i32) -> Self::Output {
-        Self(self.0 / rhs)
-    }
-}
-
-impl DivAssign<i32> for Evaluation {
-    fn div_assign(&mut self, rhs: i32) {
-        self.0 /= rhs
+        time.map(|t| Instant::now() + (t / 30 + inc.unwrap_or(Duration::from_millis(0)) / 2))
+            .unwrap_or_else(|| Instant::now() + Duration::from_hours(10))
     }
 }
