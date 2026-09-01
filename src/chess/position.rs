@@ -1,8 +1,8 @@
 use std::{fmt::Display, str::FromStr};
 
 use crate::chess::{
-    Bitboard, CastlingRights, Color, File, NUM_COLORS, NUM_FILES, NUM_PIECES, NUM_RANKS, Piece,
-    PieceType, Rank, Square,
+    Bitboard, CastlingRights, Color, File, NUM_COLORS, NUM_FILES, NUM_PIECES, NUM_RANKS, PerColor,
+    PerPieceType, Piece, PieceType, Rank, Square,
     error::Error,
     movegen::{Move, MoveKind, attack_mask, bishop_attacks, pawn_attack_mask, rook_attacks},
 };
@@ -11,10 +11,12 @@ pub const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQ
 pub const FEN_RANK_SEPARATOR: char = '/';
 pub(crate) const NUM_BITBOARDS: usize = NUM_COLORS * NUM_PIECES;
 
+type PerPiece<T> = PerColor<PerPieceType<T>>;
+
 /// State that cannot be recovered by the inverse of a move alone.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct State {
-    castling_rights: [CastlingRights; NUM_COLORS],
+    castling_rights: PerColor<CastlingRights>,
     en_passant_square: Option<Square>,
     half_move_clock: u8,
     captured_piece: Option<Piece>,
@@ -29,11 +31,11 @@ pub struct State {
 /// is not a part of the position itself and is tracked as part of an entire game. Practically
 /// all rules can be applied based on the position alone. The only rule that cannot be applied
 /// from a position is the determination of three fold repititions.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Position {
-    bitboards: [Bitboard; NUM_BITBOARDS],
+    bitboards: PerPiece<Bitboard>,
     side_to_move: Color,
-    castling_rights: [CastlingRights; NUM_COLORS],
+    castling_rights: PerColor<CastlingRights>,
     en_passant_square: Option<Square>,
     half_move_clock: u8,
 }
@@ -53,7 +55,7 @@ impl Display for Position {
         for rank in Rank::values_from(Rank::Eight).rev() {
             for file in File::values() {
                 let piece_str = self
-                    .get_piece_at(&Square::new(file, rank))
+                    .piece_at(&Square::new(file, rank))
                     .map(|x| x.to_string())
                     .unwrap_or_else(|| " ".to_string());
 
@@ -76,7 +78,7 @@ impl Display for Position {
             writeln!(f, "{}", RANK_DIVIDER)?;
         }
 
-        writeln!(f, "{}", FILE_LABEL_TEMPLATE)
+        write!(f, "{}", FILE_LABEL_TEMPLATE)
     }
 }
 
@@ -88,6 +90,7 @@ impl Position {
     pub fn occupied(&self) -> Bitboard {
         self.bitboards
             .iter()
+            .flat_map(|pt| pt.iter())
             .fold(Bitboard::EMPTY, |acc, bb| acc | *bb)
     }
 
@@ -97,7 +100,11 @@ impl Position {
 
     /// Fetches all instances of a given piece on the board.
     pub fn piece(&self, piece: Piece) -> Bitboard {
-        self.bitboards[piece]
+        self.bitboards[piece.color()][piece.piece_type()]
+    }
+
+    pub fn piece_count(&self, piece: Piece) -> i32 {
+        self.piece(piece).pop_count()
     }
 
     pub fn has_en_passant(&self) -> bool {
@@ -113,36 +120,21 @@ impl Position {
     }
 
     pub fn color_pieces(&self, color: Color) -> Bitboard {
-        let range = if color.is_white() {
-            0..NUM_PIECES
-        } else {
-            NUM_PIECES..NUM_BITBOARDS
-        };
-        let mut combined_pieces = Bitboard::EMPTY;
-        for i in range {
-            combined_pieces |= self.bitboards[i];
-        }
-
-        combined_pieces
+        self.bitboards[color]
+            .iter()
+            .fold(Bitboard::EMPTY, |acc, bb| acc | *bb)
     }
 
-    pub fn get_piece_at(&self, square: &Square) -> Option<Piece> {
-        let mut piece_opt = None;
-        let square_bb = Bitboard::from(*square);
-        for (i, bb) in self.bitboards.iter().enumerate() {
-            if *bb & square_bb != Bitboard::EMPTY {
-                let color = if i < NUM_PIECES {
-                    Color::White
-                } else {
-                    Color::Black
-                };
-
-                piece_opt = Some(Piece::new(color, PieceType::try_from(i % NUM_PIECES).ok()?));
-                break;
+    pub fn piece_at(&self, square: &Square) -> Option<Piece> {
+        for color in [Color::White, Color::Black] {
+            for (i, bb) in self.bitboards[color].iter().enumerate() {
+                if *bb & Bitboard::from(*square) != Bitboard::EMPTY {
+                    return Some(Piece::new(color, PieceType::try_from(i).ok()?));
+                }
             }
         }
 
-        piece_opt
+        None
     }
 
     /// Attempts to make a move.
@@ -158,8 +150,8 @@ impl Position {
         let from = mv.from_sq();
         let to = mv.to_sq();
         let kind = mv.kind();
-        let moved_piece = self.get_piece_at(&from).expect("no piece at from square");
-        let captured_piece = self.get_piece_at(&to);
+        let moved_piece = self.piece_at(&from).expect("no piece at from square");
+        let captured_piece = self.piece_at(&to);
 
         debug_assert_eq!(
             moved_piece.color(),
@@ -318,9 +310,7 @@ impl Position {
         let us = !them;
         let from = mv.to_sq();
         let to = mv.from_sq();
-        let moved_piece = self
-            .get_piece_at(&from)
-            .expect("no piece at moved location");
+        let moved_piece = self.piece_at(&from).expect("no piece at moved location");
 
         // Move piece back to original square
         let moved_piece_bb = self.piece_mut(moved_piece);
@@ -450,7 +440,7 @@ impl Position {
     }
 
     fn piece_mut(&mut self, piece: Piece) -> &mut Bitboard {
-        &mut self.bitboards[piece]
+        &mut self.bitboards[piece.color()][piece.piece_type()]
     }
 
     fn board_state(&self) -> State {
@@ -480,7 +470,7 @@ impl FromStr for Position {
         let bitboards = parse_fen_board(components[0])?;
         let side_to_move: Color = components[1].parse()?;
         let castling_rights = if components[2] == "-" {
-            [CastlingRights::None; NUM_COLORS]
+            PerColor::new(CastlingRights::None)
         } else {
             let rights_str = components[2];
             let split_index = rights_str
@@ -490,7 +480,11 @@ impl FromStr for Position {
                 .unwrap_or(rights_str.len());
             let (white_rights, black_rights) = rights_str.split_at(split_index);
 
-            [white_rights.parse()?, black_rights.parse()?]
+            let mut rights = PerColor::new(CastlingRights::None);
+            rights[Color::White] = white_rights.parse()?;
+            rights[Color::Black] = black_rights.parse()?;
+
+            rights
         };
 
         // TODO: Add validation checks of the en passant square and board
@@ -520,13 +514,13 @@ impl Default for Position {
     }
 }
 
-fn parse_fen_board(fen_board: &str) -> Result<[Bitboard; NUM_BITBOARDS], Error> {
+fn parse_fen_board(fen_board: &str) -> Result<PerPiece<Bitboard>, Error> {
     let piece_placement: Vec<&str> = fen_board.split(FEN_RANK_SEPARATOR).collect();
     if piece_placement.len() != NUM_RANKS {
         return Err(Error::InvalidFen);
     }
 
-    let mut bitboards = [Bitboard::EMPTY; NUM_BITBOARDS];
+    let mut bitboards = PerColor::new(PerPieceType::new(Bitboard::EMPTY));
     let mut rank_opt = Some(Rank::Eight);
     for &rank_str in piece_placement.iter() {
         let rank = rank_opt.ok_or(Error::InvalidFen)?;
@@ -538,7 +532,8 @@ fn parse_fen_board(fen_board: &str) -> Result<[Bitboard; NUM_BITBOARDS], Error> 
                 file_opt = file.right_n(count as u8);
             } else if c.is_alphabetic() {
                 let piece: Piece = c.to_string().parse()?;
-                bitboards[piece] |= Bitboard(1 << Square::new(file, rank) as u64);
+                bitboards[piece.color()][piece.piece_type()] |=
+                    Bitboard(1 << Square::new(file, rank) as u64);
                 file_opt = file.right_n(1);
             } else {
                 return Err(Error::InvalidFen);
@@ -559,25 +554,25 @@ mod tests {
     fn test_starting_parse() {
         let p = Position::default();
 
-        let expected_bb: [Bitboard; NUM_BITBOARDS] = [
-            Bitboard(0x000000000000FF00),
-            Bitboard(0x0000000000000042),
-            Bitboard(0x0000000000000024),
-            Bitboard(0x0000000000000081),
-            Bitboard(0x0000000000000008),
-            Bitboard(0x0000000000000010),
-            Bitboard(0x00FF000000000000),
-            Bitboard(0x4200000000000000),
-            Bitboard(0x2400000000000000),
-            Bitboard(0x8100000000000000),
-            Bitboard(0x0800000000000000),
-            Bitboard(0x1000000000000000),
-        ];
+        let mut expected_bb = PerColor::new(PerPieceType::new(Bitboard::EMPTY));
+
+        expected_bb[Color::White][PieceType::Pawn] = Bitboard(0x000000000000FF00);
+        expected_bb[Color::White][PieceType::Knight] = Bitboard(0x0000000000000042);
+        expected_bb[Color::White][PieceType::Bishop] = Bitboard(0x0000000000000024);
+        expected_bb[Color::White][PieceType::Rook] = Bitboard(0x0000000000000081);
+        expected_bb[Color::White][PieceType::Queen] = Bitboard(0x0000000000000008);
+        expected_bb[Color::White][PieceType::King] = Bitboard(0x0000000000000010);
+        expected_bb[Color::Black][PieceType::Pawn] = Bitboard(0x00FF000000000000);
+        expected_bb[Color::Black][PieceType::Knight] = Bitboard(0x4200000000000000);
+        expected_bb[Color::Black][PieceType::Bishop] = Bitboard(0x2400000000000000);
+        expected_bb[Color::Black][PieceType::Rook] = Bitboard(0x8100000000000000);
+        expected_bb[Color::Black][PieceType::Queen] = Bitboard(0x0800000000000000);
+        expected_bb[Color::Black][PieceType::King] = Bitboard(0x1000000000000000);
 
         assert_eq!(Color::White, p.side_to_move);
         assert_eq!(0, p.half_move_clock);
         assert_eq!(None, p.en_passant_square);
-        assert_eq!([CastlingRights::All; NUM_COLORS], p.castling_rights);
+        assert_eq!(PerColor::new(CastlingRights::All), p.castling_rights);
         assert_eq!(expected_bb, p.bitboards);
     }
 
@@ -586,25 +581,25 @@ mod tests {
         let mid_game_fen = "rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq e4 1 2";
         let p: Position = mid_game_fen.parse().unwrap();
 
-        let expected_bb: [Bitboard; NUM_BITBOARDS] = [
-            Bitboard(0x000000001000EF00),
-            Bitboard(0x0000000000200002),
-            Bitboard(0x0000000000000024),
-            Bitboard(0x0000000000000081),
-            Bitboard(0x0000000000000008),
-            Bitboard(0x0000000000000010),
-            Bitboard(0x00FB000400000000),
-            Bitboard(0x4200000000000000),
-            Bitboard(0x2400000000000000),
-            Bitboard(0x8100000000000000),
-            Bitboard(0x0800000000000000),
-            Bitboard(0x1000000000000000),
-        ];
+        let mut expected_bb = PerColor::new(PerPieceType::new(Bitboard::EMPTY));
+
+        expected_bb[Color::White][PieceType::Pawn] = Bitboard(0x000000001000EF00);
+        expected_bb[Color::White][PieceType::Knight] = Bitboard(0x0000000000200002);
+        expected_bb[Color::White][PieceType::Bishop] = Bitboard(0x0000000000000024);
+        expected_bb[Color::White][PieceType::Rook] = Bitboard(0x0000000000000081);
+        expected_bb[Color::White][PieceType::Queen] = Bitboard(0x0000000000000008);
+        expected_bb[Color::White][PieceType::King] = Bitboard(0x0000000000000010);
+        expected_bb[Color::Black][PieceType::Pawn] = Bitboard(0x00FB000400000000);
+        expected_bb[Color::Black][PieceType::Knight] = Bitboard(0x4200000000000000);
+        expected_bb[Color::Black][PieceType::Bishop] = Bitboard(0x2400000000000000);
+        expected_bb[Color::Black][PieceType::Rook] = Bitboard(0x8100000000000000);
+        expected_bb[Color::Black][PieceType::Queen] = Bitboard(0x0800000000000000);
+        expected_bb[Color::Black][PieceType::King] = Bitboard(0x1000000000000000);
 
         assert_eq!(Color::Black, p.side_to_move);
         assert_eq!(1, p.half_move_clock);
         assert_eq!(Some(Square::E4), p.en_passant_square);
-        assert_eq!([CastlingRights::All; NUM_COLORS], p.castling_rights);
+        assert_eq!(PerColor::new(CastlingRights::All), p.castling_rights);
         assert_eq!(expected_bb, p.bitboards);
     }
 
@@ -613,25 +608,25 @@ mod tests {
         let mid_game_fen = "5k2/ppp5/4P3/3R3p/6P1/1K2Nr3/PP3P2/8 b - - 1 32";
         let p: Position = mid_game_fen.parse().unwrap();
 
-        let expected_bb: [Bitboard; NUM_BITBOARDS] = [
-            Bitboard(0x0000100040002300),
-            Bitboard(0x0000000000100000),
-            Bitboard(0x00),
-            Bitboard(0x0000000800000000),
-            Bitboard(0x0000000000000000),
-            Bitboard(0x0000000000020000),
-            Bitboard(0x0007008000000000),
-            Bitboard(0x00),
-            Bitboard(0x00),
-            Bitboard(0x0000000000200000),
-            Bitboard(0x00),
-            Bitboard(0x2000000000000000),
-        ];
+        let mut expected_bb = PerColor::new(PerPieceType::new(Bitboard::EMPTY));
+
+        expected_bb[Color::White][PieceType::Pawn] = Bitboard(0x0000100040002300);
+        expected_bb[Color::White][PieceType::Knight] = Bitboard(0x0000000000100000);
+        expected_bb[Color::White][PieceType::Bishop] = Bitboard(0x00);
+        expected_bb[Color::White][PieceType::Rook] = Bitboard(0x0000000800000000);
+        expected_bb[Color::White][PieceType::Queen] = Bitboard(0x0000000000000000);
+        expected_bb[Color::White][PieceType::King] = Bitboard(0x0000000000020000);
+        expected_bb[Color::Black][PieceType::Pawn] = Bitboard(0x0007008000000000);
+        expected_bb[Color::Black][PieceType::Knight] = Bitboard(0x00);
+        expected_bb[Color::Black][PieceType::Bishop] = Bitboard(0x00);
+        expected_bb[Color::Black][PieceType::Rook] = Bitboard(0x0000000000200000);
+        expected_bb[Color::Black][PieceType::Queen] = Bitboard(0x00);
+        expected_bb[Color::Black][PieceType::King] = Bitboard(0x2000000000000000);
 
         assert_eq!(Color::Black, p.side_to_move);
         assert_eq!(1, p.half_move_clock);
         assert_eq!(None, p.en_passant_square);
-        assert_eq!([CastlingRights::None; NUM_COLORS], p.castling_rights);
+        assert_eq!(PerColor::new(CastlingRights::None), p.castling_rights);
         assert_eq!(expected_bb, p.bitboards);
     }
 }

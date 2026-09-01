@@ -1,6 +1,7 @@
 use std::{
     fmt::Display,
     ops::{Add, Index, IndexMut, Not, Sub},
+    slice::{Iter, IterMut},
     str::FromStr,
 };
 
@@ -11,6 +12,76 @@ pub const NUM_FILES: usize = 8;
 pub const NUM_SQUARES: usize = NUM_RANKS * NUM_FILES;
 pub const NUM_COLORS: usize = 2;
 pub const NUM_PIECES: usize = 6;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PerColor<T>([T; NUM_COLORS]);
+
+impl<T> Index<Color> for PerColor<T> {
+    type Output = T;
+
+    fn index(&self, index: Color) -> &Self::Output {
+        let color_index = index as usize;
+        &self.0[color_index]
+    }
+}
+
+impl<T> IndexMut<Color> for PerColor<T> {
+    fn index_mut(&mut self, index: Color) -> &mut Self::Output {
+        let color_index = index as usize;
+        &mut self.0[color_index]
+    }
+}
+
+impl<T: Copy> PerColor<T> {
+    pub fn new(value: T) -> Self {
+        Self([value; NUM_COLORS])
+    }
+}
+
+impl<T> PerColor<T> {
+    pub fn iter(&self) -> Iter<'_, T> {
+        self.0.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> IterMut<'_, T> {
+        self.0.iter_mut()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PerPieceType<T>([T; NUM_PIECES]);
+
+impl<T> Index<PieceType> for PerPieceType<T> {
+    type Output = T;
+
+    fn index(&self, index: PieceType) -> &Self::Output {
+        let piece_index = index as usize;
+        &self.0[piece_index]
+    }
+}
+
+impl<T> IndexMut<PieceType> for PerPieceType<T> {
+    fn index_mut(&mut self, index: PieceType) -> &mut Self::Output {
+        let piece_index = index as usize;
+        &mut self.0[piece_index]
+    }
+}
+
+impl<T: Copy> PerPieceType<T> {
+    pub fn new(value: T) -> Self {
+        Self([value; NUM_PIECES])
+    }
+}
+
+impl<T> PerPieceType<T> {
+    pub fn iter(&self) -> Iter<'_, T> {
+        self.0.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> IterMut<'_, T> {
+        self.0.iter_mut()
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
@@ -441,7 +512,7 @@ pub enum Color {
 
 impl Color {
     pub fn is_white(&self) -> bool {
-        self == &Self::White
+        *self == Self::White
     }
 }
 
@@ -537,7 +608,21 @@ pub struct Piece {
 }
 
 impl Piece {
-    pub fn new(color: Color, piece_type: PieceType) -> Self {
+    pub const WHITE_KING: Piece = Piece::new(Color::White, PieceType::King);
+    pub const WHITE_QUEEN: Piece = Piece::new(Color::White, PieceType::Queen);
+    pub const WHITE_ROOK: Piece = Piece::new(Color::White, PieceType::Rook);
+    pub const WHITE_BISHOP: Piece = Piece::new(Color::White, PieceType::Bishop);
+    pub const WHITE_KNIGHT: Piece = Piece::new(Color::White, PieceType::Knight);
+    pub const WHITE_PAWN: Piece = Piece::new(Color::White, PieceType::Pawn);
+
+    pub const BLACK_KING: Piece = Piece::new(Color::Black, PieceType::King);
+    pub const BLACK_QUEEN: Piece = Piece::new(Color::Black, PieceType::Queen);
+    pub const BLACK_ROOK: Piece = Piece::new(Color::Black, PieceType::Rook);
+    pub const BLACK_BISHOP: Piece = Piece::new(Color::Black, PieceType::Bishop);
+    pub const BLACK_KNIGHT: Piece = Piece::new(Color::Black, PieceType::Knight);
+    pub const BLACK_PAWN: Piece = Piece::new(Color::Black, PieceType::Pawn);
+
+    pub const fn new(color: Color, piece_type: PieceType) -> Self {
         Self { color, piece_type }
     }
 
@@ -607,22 +692,6 @@ impl CastlingRights {
         let result_byte = self_byte ^ (self_byte & other_byte);
 
         unsafe { std::mem::transmute(result_byte) }
-    }
-}
-
-impl Index<Color> for [CastlingRights; NUM_COLORS] {
-    type Output = CastlingRights;
-
-    fn index(&self, index: Color) -> &Self::Output {
-        let color_index = index as usize;
-        &self[color_index]
-    }
-}
-
-impl IndexMut<Color> for [CastlingRights; NUM_COLORS] {
-    fn index_mut(&mut self, index: Color) -> &mut Self::Output {
-        let color_index = index as usize;
-        &mut self[color_index]
     }
 }
 

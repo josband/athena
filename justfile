@@ -1,5 +1,4 @@
-# Use powershell if running on windows
-set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
+set shell := ["bash", "-uc"]
 
 alias l := lint
 alias c := check
@@ -7,6 +6,7 @@ alias b := build
 alias br := build-release
 alias t := test
 alias tf := test-full
+alias p := profile
 
 default: lint check test
 
@@ -33,3 +33,7 @@ build:
 # Compiles Athena to a release binary
 build-release:
     cargo build --release
+
+# Generates a flamegraph for athena on release mode (sudo required)
+profile:
+    CARGO_PROFILE_RELEASE_DEBUG=true sudo -E cargo flamegraph --release

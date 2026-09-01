@@ -44,6 +44,17 @@ impl MoveList {
         }
     }
 
+    pub fn generate_for(pos: &Position, legal: bool) -> Self {
+        let mut list = MoveList::new();
+        if legal {
+            generate_legal_moves(&mut pos.clone(), &mut list);
+        } else {
+            generate_moves(pos, &mut list);
+        }
+
+        list
+    }
+
     pub fn len(&self) -> usize {
         self.len
     }
@@ -333,6 +344,22 @@ pub fn generate_moves(position: &Position, moves: &mut MoveList) {
     king_moves(position, moves);
 }
 
+pub fn generate_legal_moves(position: &mut Position, moves: &mut MoveList) {
+    let mut curr = moves.len();
+    generate_moves(position, moves);
+
+    let mut history = vec![];
+    while curr < moves.len() {
+        let mv = moves.get(curr).expect("move does not exist");
+        if !position.make_move(mv, &mut history) {
+            moves.swap_remove(curr);
+        } else {
+            curr += 1;
+            position.unmake_move(mv, &mut history);
+        }
+    }
+}
+
 fn pawn_moves(position: &Position, moves: &mut MoveList) {
     let side = position.side_to_move();
     let (forward, forward_left, forward_right) = if side.is_white() {
@@ -534,7 +561,7 @@ fn insert_moves(
     moves: &mut MoveList,
 ) {
     while let Some(dest) = locations.pop_lsb() {
-        let dest_occupancy_opt = position.get_piece_at(&dest);
+        let dest_occupancy_opt = position.piece_at(&dest);
         if dest_occupancy_opt.is_some_and(|p| p.color() != position.side_to_move()) {
             moves.push(Move::new(source, dest, MoveKind::Capture));
         } else if dest_occupancy_opt.is_none() {
@@ -667,23 +694,6 @@ mod tests {
         let result = do_perft(POSITION_6, 5, 164075551);
 
         assert!(result.is_ok());
-    }
-
-    /// Generates all legal moves for a given position
-    fn generate_legal_moves(position: &mut Position, moves: &mut MoveList) {
-        let mut curr = moves.len();
-        generate_moves(position, moves);
-
-        let mut history = vec![];
-        while curr < moves.len() {
-            let mv = moves.get(curr).expect("move does not exist");
-            if !position.make_move(mv, &mut history) {
-                moves.swap_remove(curr);
-            } else {
-                curr += 1;
-                position.unmake_move(mv, &mut history);
-            }
-        }
     }
 
     /// Perft testing function
