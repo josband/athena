@@ -9,6 +9,7 @@ use std::{
     thread,
 };
 
+use tracing::{info, warn};
 use uci_parser::{UciCommand, UciResponse, UciSearchOptions};
 
 use crate::{
@@ -16,7 +17,7 @@ use crate::{
         Position,
         movegen::{self, Move, MoveList, init_movegen},
     },
-    engine::{core::Athena, search::NegamaxSearcher},
+    engine::core::Athena,
 };
 
 #[derive(Debug, Default)]
@@ -132,10 +133,11 @@ impl SearchHandle {
         let stop = Arc::new(AtomicBool::new(false));
         let engine_stop = stop.clone();
         let (tx, rx) = mpsc::channel::<(Position, UciSearchOptions)>();
-        let searcher = NegamaxSearcher::new(stop.clone());
-        let mut engine = Athena::new(engine_stop, searcher);
+        let mut engine = Athena::new(engine_stop);
         thread::spawn(move || {
+            info!("Starting searcher thread...");
             while let Ok((pos, limits)) = rx.recv() {
+                info!("Starting search for best move...");
                 if let Some(mv) = engine.go(pos, limits) {
                     println!(
                         "{}",
@@ -144,8 +146,14 @@ impl SearchHandle {
                             ponder: None
                         }
                     );
+                } else {
+                    warn!("Search was stopped before any moves could be searched.")
                 };
+
+                info!("Listening for next search command");
             }
+
+            info!("Publishing channel closed. Shutting down searcher thread...");
         });
 
         Self { tx, stop }
