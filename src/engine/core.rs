@@ -334,12 +334,7 @@ where
             default,
         }
     }
-}
 
-impl<T, F> Throttle<T, F>
-where
-    T: Clone,
-{
     pub fn tick<U>(&mut self, arg: U) -> T
     where
         F: Fn(U) -> T,
